@@ -26,7 +26,7 @@ from openlineage.client.facet_v2 import (
     sql_job,
 )
 from openlineage.client.uuid import generate_new_uuid
-from openlineage.common.provider.dbt.facets import DbtVersionRunFacet, ParentRunMetadata
+from openlineage.common.provider.dbt.facets import DbtRunRunFacet, DbtVersionRunFacet, ParentRunMetadata
 from openlineage.common.provider.dbt.utils import __version__ as openlineage_version
 from openlineage.common.provider.snowflake import fix_account_name
 from openlineage.common.utils import get_from_multiple_chains, get_from_nullable_chain
@@ -47,6 +47,7 @@ class Adapter(Enum):
     DUCKDB = "duckdb"
     TRINO = "trino"
     GLUE = "glue"
+    CLICKHOUSE = "clickhouse"
 
     @staticmethod
     def adapters() -> str:
@@ -603,6 +604,8 @@ class DbtArtifactProcessor:
             return f"redshift://{profile['host']}:{profile['port']}"
         elif self.adapter_type == Adapter.POSTGRES:
             return f"postgres://{profile['host']}:{profile['port']}"
+        elif self.adapter_type == Adapter.CLICKHOUSE:
+            return f"clickhouse://{profile['host']}:{profile['port']}"
         elif self.adapter_type == Adapter.TRINO:
             return f"trino://{profile['host']}:{profile['port']}"
         elif self.adapter_type == Adapter.DATABRICKS:
@@ -648,6 +651,7 @@ class DbtArtifactProcessor:
     def get_run(self, run_id: str) -> Run:
         run_facets = {
             "dbt_version": self.dbt_version_facet(),
+            "dbt_run": self.dbt_run_run_facet(),
             "processing_engine": self.processing_engine_facet(),
         }
         if self._dbt_run_metadata:
@@ -664,6 +668,9 @@ class DbtArtifactProcessor:
             "Use processing_engine facet instead."
         )
         return DbtVersionRunFacet(version=self.run_metadata["dbt_version"])  # type: ignore[index]
+
+    def dbt_run_run_facet(self) -> DbtRunRunFacet:
+        return DbtRunRunFacet(invocation_id=self.run_metadata["invocation_id"])  # type: ignore[index]
 
     def processing_engine_facet(self) -> processing_engine_run.ProcessingEngineRunFacet:
         return processing_engine_run.ProcessingEngineRunFacet(
