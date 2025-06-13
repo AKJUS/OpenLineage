@@ -14,9 +14,7 @@
           "schema": {
             "_producer": "https://github.com/OpenLineage/OpenLineage/tree/0.0.1/integration/dbt",
             "_schemaURL": "https://openlineage.io/spec/facets/1-1-1/SchemaDatasetFacet.json#/$defs/SchemaDatasetFacet",
-            "fields": [
-              { "description": "The primary key for this table", "name": "id" }
-            ]
+            "fields": [{ "description": "The primary key for this table", "name": "id" }]
           }
         },
         "name": "postgres.postgres.my_second_dbt_model",
@@ -74,6 +72,11 @@
           "_schemaURL": "https://openlineage.io/spec/facets/1-1-0/ParentRunFacet.json#/$defs/ParentRunFacet",
           "job": { "name": "dbt-job-name", "namespace": "dbt" },
           "run": { "runId": "{{ any(result) }}" }
+        },
+        "dbt_run": {
+          "_producer": "https://github.com/OpenLineage/OpenLineage/tree/0.0.1/integration/dbt",
+          "_schemaURL": "https://github.com/OpenLineage/OpenLineage/tree/main/integration/common/openlineage/schema/dbt-run-run-facet.json",
+          "invocation_id": "69c7b548-c6fd-4a70-87b8-9f111378149b"
         }
       },
       "runId": "{{ any(result) }}"
@@ -94,9 +97,7 @@
           "schema": {
             "_producer": "https://github.com/OpenLineage/OpenLineage/tree/0.0.1/integration/dbt",
             "_schemaURL": "https://openlineage.io/spec/facets/1-1-1/SchemaDatasetFacet.json#/$defs/SchemaDatasetFacet",
-            "fields": [
-              { "description": "The primary key for this table", "name": "id" }
-            ]
+            "fields": [{ "description": "The primary key for this table", "name": "id" }]
           }
         },
         "name": "postgres.postgres.my_second_dbt_model",
@@ -159,6 +160,11 @@
           "_schemaURL": "https://openlineage.io/spec/facets/1-1-0/ParentRunFacet.json#/$defs/ParentRunFacet",
           "job": { "name": "dbt-job-name", "namespace": "dbt" },
           "run": { "runId": "{{ any(result) }}" }
+        },
+        "dbt_run": {
+          "_producer": "https://github.com/OpenLineage/OpenLineage/tree/0.0.1/integration/dbt",
+          "_schemaURL": "https://github.com/OpenLineage/OpenLineage/tree/main/integration/common/openlineage/schema/dbt-run-run-facet.json",
+          "invocation_id": "69c7b548-c6fd-4a70-87b8-9f111378149b"
         }
       },
       "runId": "{{ any(result) }}"
