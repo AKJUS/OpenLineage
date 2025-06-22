@@ -10,16 +10,16 @@ plugins {
     id 'java-library'
     id 'maven-publish'
     id 'signing'
-    id 'com.adarshr.test-logger' version '3.2.0'
-    id 'com.diffplug.spotless' version '7.0.2'
+    id 'com.adarshr.test-logger' version '4.0.0'
+    id 'com.diffplug.spotless' version '7.0.4'
     id 'com.gradleup.shadow' version '8.3.6'
     id 'pmd'
-    id 'io.freefair.lombok' version '8.13.1'
+    id 'io.freefair.lombok' version '8.14'
 }
 
 ext {
     projectDescription = 'DataZone OpenLineage transport library'
-    awsSdkVersion = '2.31.50'
+    awsSdkVersion = '2.31.68'
 }
 
 dependencies {
