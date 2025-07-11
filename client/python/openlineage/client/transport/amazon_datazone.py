@@ -57,9 +57,15 @@ class AmazonDataZoneTransport(Transport):
             log.info(
                 "Successfully posted a LineageEvent: %s in Domain: %s", response["id"], response["domainId"]
             )
-        except Exception as error:  # noqa: BLE001
+        except Exception as error:
             msg = f"Failed to send lineage event to DataZone Domain {self.config.domain_id}: {event}"
             raise RuntimeError(msg) from error
+
+    def close(self, timeout: float = -1) -> bool:
+        if timeout >= 0:
+            log.warning("AmazonDataZoneTransport does not support timeout")
+        self.datazone.close()  # type: ignore[attr-defined]
+        return True
 
     def _setup_datazone(self, endpoint_url: str | None = None) -> None:
         try:

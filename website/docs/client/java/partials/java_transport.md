@@ -238,8 +238,8 @@ httpConfig.setUrl("http://localhost:5000");
 httpConfig.setEndpoint("/api/v1/lineage");
 httpConfig.setUrlParams(queryParams);
 httpConfig.setAuth(apiKeyTokenProvider);
-httpConfig.setTimeoutInMillis(headers);
-httpConfig.setHeaders(5000);
+httpConfig.setTimeoutInMillis(5000);
+httpConfig.setHeaders(headers);
 httpConfig.setCompression(HttpConfig.Compression.GZIP);
 
 OpenLineageClient client = OpenLineageClient.builder()
@@ -830,7 +830,7 @@ GcpLineageTransportConfig gcplineageConfig = new GcpLineageTransportConfig();
 
 gcplineageConfig.setProjectId("your_gcp_project_id");
 gcplineageConfig.setLocation("your_gcp_location");
-gcplineageConfig.setMode("sync");
+gcplineageConfig.setMode(MODE.SYNC);
 gcplineageConfig.setCredentialsFile("path/to/credentials.json");
 
 OpenLineageClient client = OpenLineageClient.builder()

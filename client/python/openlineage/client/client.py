@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import os
@@ -10,19 +11,9 @@ from typing import TYPE_CHECKING, Any, TypeVar, Union, cast
 
 import attr
 import yaml
-from openlineage.client.filter import Filter, FilterConfig, create_filter
-from openlineage.client.serde import Serde
-from openlineage.client.tags import TagsConfig
-from openlineage.client.utils import deep_merge_dicts
-
-if TYPE_CHECKING:
-    from requests import Session
-    from requests.adapters import HTTPAdapter
-
-import contextlib
-
 from openlineage.client import event_v2
 from openlineage.client.facets import FacetsConfig
+from openlineage.client.filter import Filter, FilterConfig, create_filter
 from openlineage.client.generated.environment_variables_run import (
     EnvironmentVariable,
     EnvironmentVariablesRunFacet,
@@ -30,33 +21,41 @@ from openlineage.client.generated.environment_variables_run import (
 from openlineage.client.generated.tags_job import TagsJobFacet, TagsJobFacetFields
 from openlineage.client.generated.tags_run import TagsRunFacet, TagsRunFacetFields
 from openlineage.client.run import DatasetEvent, JobEvent, RunEvent
+from openlineage.client.serde import Serde
+from openlineage.client.tags import TagsConfig
 from openlineage.client.transport import (
     Transport,
     TransportFactory,
     get_default_factory,
 )
-from openlineage.client.transport.http import HttpConfig, HttpTransport, create_token_provider
+from openlineage.client.transport.http import HttpConfig, HttpTransport
 from openlineage.client.transport.noop import NoopConfig, NoopTransport
+from openlineage.client.utils import deep_merge_dicts
+
+if TYPE_CHECKING:
+    from requests import Session
+    from requests.adapters import HTTPAdapter
+
 
 Event_v1 = Union[RunEvent, DatasetEvent, JobEvent]
 Event_v2 = Union[event_v2.RunEvent, event_v2.DatasetEvent, event_v2.JobEvent]
 Event = Union[Event_v1, Event_v2]
 
 
-@attr.s
+@attr.define
 class OpenLineageClientOptions:
-    timeout: float = attr.ib(default=5.0)
-    verify: bool = attr.ib(default=True)
-    api_key: str = attr.ib(default=None)
-    adapter: HTTPAdapter = attr.ib(default=None)
+    timeout: float = 5.0
+    verify: bool = True
+    api_key: str | None = None
+    adapter: HTTPAdapter | None = None
 
 
-@attr.s
+@attr.define
 class OpenLineageConfig:
-    transport: dict[str, Any] | None = attr.ib(factory=dict)
-    facets: FacetsConfig = attr.ib(factory=FacetsConfig)
-    filters: list[FilterConfig] = attr.ib(factory=list)
-    tags: TagsConfig = attr.ib(factory=TagsConfig)
+    transport: dict[str, Any] | None = attr.field(factory=dict)
+    facets: FacetsConfig = attr.field(factory=FacetsConfig)
+    filters: list[FilterConfig] = attr.field(factory=list)
+    tags: TagsConfig = attr.field(factory=TagsConfig)
 
     @classmethod
     def from_dict(cls, params: dict[str, Any]) -> OpenLineageConfig:
@@ -184,6 +183,15 @@ class OpenLineageClient:
         self.transport.emit(event)
         log.debug("OpenLineage event successfully emitted.")
 
+    def close(self, timeout: float = -1.0) -> bool:
+        """
+        Closes down the transport until all events are processed or timeout is reached.
+        Params:
+          timeout: Timeout in seconds. `-1` means to block until last event is processed, 0 means no timeout.
+
+        """
+        return self.transport.close(timeout)
+
     @property
     def config(self) -> OpenLineageConfig:
         """
@@ -239,7 +247,7 @@ class OpenLineageClient:
 
         # 2. Check if transport is provided explicitly
         if kwargs.get("transport"):
-            return cast(Transport, kwargs["transport"])
+            return cast("Transport", kwargs["transport"])
 
         # 3. Check if transport configuration is provided in YAML config file
         if self.config.transport and self.config.transport.get("type"):
@@ -293,28 +301,26 @@ class OpenLineageClient:
                     return path
                 if path and verbose:
                     log.debug("OpenLineage config file is missing or not readable: `%s`.", path)
-            except Exception:  # noqa: BLE001
+            except Exception:
                 # We can get different errors depending on system
                 if verbose:
                     log.exception("Couldn't check if OpenLineage config file is readable: `%s`", path)
         return None
 
-    @staticmethod
-    def _http_transport_from_env_variables() -> HttpTransport:
-        config = HttpConfig(
-            url=os.environ["OPENLINEAGE_URL"],
-            auth=create_token_provider(
-                {
-                    "type": "api_key",
-                    "apiKey": os.environ.get("OPENLINEAGE_API_KEY", ""),
-                },
-            ),
-        )
-        endpoint = os.environ.get("OPENLINEAGE_ENDPOINT", None)
-        if endpoint is not None:
-            config.endpoint = endpoint
-
-        return HttpTransport(config)
+    def _http_transport_from_env_variables(self) -> HttpTransport:
+        """
+        Create HTTP transport from legacy environment variables
+        """
+        # Start with basic config from legacy environment variables
+        config_dict = {
+            "url": os.environ["OPENLINEAGE_URL"],
+            "auth": {
+                "type": "api_key",
+                "apiKey": os.environ.get("OPENLINEAGE_API_KEY", ""),
+            },
+            "endpoint": os.environ.get("OPENLINEAGE_ENDPOINT", "api/v1/lineage"),
+        }
+        return HttpTransport(HttpConfig.from_dict(config_dict))
 
     @staticmethod
     def _http_transport_from_url(
@@ -344,9 +350,13 @@ class OpenLineageClient:
                     default_transport_name,
                 )
                 return
+
+            api_key = os.environ.get("OPENLINEAGE_API_KEY")
+            endpoint = os.environ.get("OPENLINEAGE_ENDPOINT")
+
             os.environ[f"OPENLINEAGE__TRANSPORT__TRANSPORTS__{default_transport_name}__TYPE"] = "http"
             os.environ[f"OPENLINEAGE__TRANSPORT__TRANSPORTS__{default_transport_name}__URL"] = url
-            if api_key := os.environ.get("OPENLINEAGE_API_KEY"):
+            if api_key:
                 os.environ[
                     f"OPENLINEAGE__TRANSPORT__TRANSPORTS__{default_transport_name}__AUTH"
                 ] = json.dumps(
@@ -355,10 +365,24 @@ class OpenLineageClient:
                         "apiKey": api_key,
                     }
                 )
-            if endpoint := os.environ.get("OPENLINEAGE_ENDPOINT"):
+            if endpoint:
                 os.environ[
                     f"OPENLINEAGE__TRANSPORT__TRANSPORTS__{default_transport_name}__ENDPOINT"
                 ] = endpoint
+
+            if os.environ.get("OPENLINEAGE__TRANSPORT__TYPE") == "async_http":
+                # Special case - for seamless switch to async transport
+                if not os.getenv("OPENLINEAGE__TRANSPORT__URL"):
+                    os.environ["OPENLINEAGE__TRANSPORT__URL"] = url
+                if api_key and not os.getenv("OPENLINEAGE__TRANSPORT__AUTH"):
+                    os.environ["OPENLINEAGE__TRANSPORT__AUTH"] = json.dumps(
+                        {
+                            "type": "api_key",
+                            "apiKey": api_key,
+                        }
+                    )
+                if endpoint and not os.getenv("OPENLINEAGE__TRANSPORT__ENDPOINT"):
+                    os.environ["OPENLINEAGE__TRANSPORT__ENDPOINT"] = endpoint
 
     @classmethod
     def _load_config_from_env_variables(cls) -> dict[str, Any] | None:

@@ -23,12 +23,12 @@ if TYPE_CHECKING:
     from pytest_mock import MockerFixture
 
 
-@pytest.fixture()
+@pytest.fixture
 def domain_id() -> str:
     return "dzd_a1b2c3d4e5f6g7"
 
 
-@pytest.fixture()
+@pytest.fixture
 def run_event() -> RunEvent:
     return RunEvent(
         eventType=RunState.START,
@@ -40,7 +40,7 @@ def run_event() -> RunEvent:
     )
 
 
-@pytest.fixture()
+@pytest.fixture
 def dataset_event() -> DatasetEvent:
     return DatasetEvent(
         eventTime="2024-08-20T11:08:01.123456",
@@ -50,7 +50,7 @@ def dataset_event() -> DatasetEvent:
     )
 
 
-@pytest.fixture()
+@pytest.fixture
 def job_event() -> JobEvent:
     return JobEvent(
         eventTime="2024-08-20T11:08:01.123456",
@@ -105,6 +105,18 @@ def test_client_with_amazon_datazone_transport_skips_dataset_event(
     client.emit(dataset_event)
 
     transport.datazone.post_lineage_event.assert_not_called()
+
+
+def test_client_with_amazon_datazone_transport_close(
+    dataset_event: DatasetEvent, mocker: MockerFixture
+) -> None:
+    mocker.patch("boto3.client")
+    config = AmazonDataZoneConfig(domain_id=domain_id)
+
+    transport = AmazonDataZoneTransport(config)
+    transport.close()
+
+    transport.datazone.close.assert_called_once()
 
 
 def test_setup_datazone_raises_when_boto3_missing(mocker: MockerFixture) -> None:

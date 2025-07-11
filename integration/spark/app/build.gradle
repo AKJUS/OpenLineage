@@ -29,7 +29,7 @@ ext {
     activeRuntimeElementsConfiguration = "scala" + scala.replace(".", "") + "RuntimeElements"
 
     assertjVersion = '3.27.3'
-    bigqueryVersion = '0.35.1'
+    bigqueryVersion = '0.42.2'
     junit5Version = '5.11.4'
     mockitoVersion = '4.11.0'
     postgresqlVersion = '42.7.5'
@@ -86,14 +86,24 @@ addDependenciesToConfiguration(testSourceSet.runtimeOnlyConfigurationName, spark
 addDependenciesToConfiguration(additionalJarsConfigurationName, spark, scala, this.&additionalJars)
 
 dependencies {
+    implementation(project(path: ":shared"))
     implementation(project(path: ":shared", configuration: activeRuntimeElementsConfiguration))
+    implementation(project(path: ":spark2"))
     implementation(project(path: ":spark2", configuration: "scala212RuntimeElements"))
+    implementation(project(path: ":spark3"))
     implementation(project(path: ":spark3", configuration: activeRuntimeElementsConfiguration))
+
+    implementation(project(path: ":spark31"))
     implementation(project(path: ":spark31", configuration: "scala212RuntimeElements"))
+    implementation(project(path: ":spark32"))
     implementation(project(path: ":spark32", configuration: activeRuntimeElementsConfiguration))
+    implementation(project(path: ":spark33"))
     implementation(project(path: ":spark33", configuration: activeRuntimeElementsConfiguration))
+    implementation(project(path: ":spark34"))
     implementation(project(path: ":spark34", configuration: activeRuntimeElementsConfiguration))
+    implementation(project(path: ":spark35"))
     implementation(project(path: ":spark35", configuration: activeRuntimeElementsConfiguration))
+    implementation(project(path: ":spark40"))
     implementation(project(path: ":spark40", configuration: "scala213RuntimeElements"))
     implementation(project(path: ":iceberg"))
     implementation(project(path: ":gcp"))
@@ -500,12 +510,30 @@ void addDependenciesToConfiguration(String configurationName, String spark, Stri
 }
 
 List<Dependency> bigqueryDependencies(String spark, String scala) {
-    return [
-            dependencies.create("com.google.cloud.spark:spark-bigquery-with-dependencies_${scala}:${bigqueryVersion}", {
-                exclude(group: 'com.fasterxml.jackson.core')
-                exclude(group: 'com.fasterxml.jackson.module')
-            })
-    ]
+    final def registry = [
+            "3.2.4": [
+                dependencies.create("com.google.cloud.spark:spark-3.2-bigquery:${bigqueryVersion}",
+                        { transitive = false }
+                )
+            ],
+            "3.3.4": [
+                dependencies.create("com.google.cloud.spark:spark-3.3-bigquery:${bigqueryVersion}",
+                        { transitive = false }
+                )
+            ],
+            "3.4.3": [
+                dependencies.create("com.google.cloud.spark:spark-3.4-bigquery:${bigqueryVersion}",
+                        { transitive = false }
+                )
+            ],
+            "3.5.4": [
+                dependencies.create("com.google.cloud.spark:spark-3.5-bigquery:${bigqueryVersion}",
+                        { transitive = false }
+                )
+            ]
+    ];
+
+    return registry.get(spark, [])
 }
 
 List<Dependency> icebergDependencies(String spark, String scala) {
@@ -546,15 +574,21 @@ List<Dependency> deltaDependencies(String spark, String scala) {
             "3.2.4": "1.1.0",
             "3.3.4": "2.1.0",
             "3.4.3": "2.4.0",
+            "3.5.4": "3.3.2"
     ]
 
     def delta = registry.get(spark)
     if (delta == null) {
         return []
+    } else if (delta.startsWith("1.") || delta.startsWith("2.")) {
+        return [
+                dependencies.create("io.delta:delta-core_${scala}:$delta")
+        ]
+    } else if (delta.startsWith("3.")) {
+        return [
+                dependencies.create("io.delta:delta-spark_${scala}:$delta")
+        ]
     }
-    return [
-            dependencies.create("io.delta:delta-core_${scala}:$delta")
-    ]
 }
 
 List<Dependency> gcsDependencies(String spark, String scala) {

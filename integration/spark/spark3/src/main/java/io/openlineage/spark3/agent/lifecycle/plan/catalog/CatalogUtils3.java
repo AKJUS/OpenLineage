@@ -6,6 +6,7 @@
 package io.openlineage.spark3.agent.lifecycle.plan.catalog;
 
 import io.openlineage.client.OpenLineage;
+import io.openlineage.client.dataset.DatasetCompositeFacetsBuilder;
 import io.openlineage.client.utils.DatasetIdentifier;
 import io.openlineage.spark.api.OpenLineageContext;
 import java.util.Arrays;
@@ -92,6 +93,23 @@ public class CatalogUtils3 {
                         relation.simpleString(5), relation.getClass().getCanonicalName())));
   }
 
+  public static void addStorageAndCatalogFacets(
+      OpenLineageContext context,
+      TableCatalog catalog,
+      Map<String, String> properties,
+      DatasetCompositeFacetsBuilder builder) {
+    CatalogUtils3.getStorageDatasetFacet(context, catalog, properties)
+        .map(storageDatasetFacet -> builder.getFacets().storage(storageDatasetFacet));
+    CatalogUtils3.getCatalogDatasetFacet(context, catalog, properties)
+        .ifPresent(
+            catalogDatasetFacet -> {
+              builder.getFacets().catalog(catalogDatasetFacet.getCatalogDatasetFacet());
+              catalogDatasetFacet
+                  .getAdditionalFacets()
+                  .forEach((k, v) -> builder.getFacets().put(k, v));
+            });
+  }
+
   public static Optional<OpenLineage.StorageDatasetFacet> getStorageDatasetFacet(
       OpenLineageContext context, TableCatalog catalog, Map<String, String> properties) {
     Optional<CatalogHandler> catalogHandler = getCatalogHandler(context, catalog);
@@ -100,7 +118,7 @@ public class CatalogUtils3 {
         : Optional.empty();
   }
 
-  public static Optional<OpenLineage.CatalogDatasetFacet> getCatalogDatasetFacet(
+  public static Optional<CatalogHandler.CatalogWithAdditionalFacets> getCatalogDatasetFacet(
       OpenLineageContext context, TableCatalog catalog, Map<String, String> properties) {
     Optional<CatalogHandler> catalogHandler = getCatalogHandler(context, catalog);
     return catalogHandler.isPresent()

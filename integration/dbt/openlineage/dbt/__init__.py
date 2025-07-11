@@ -4,6 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import logging
+import logging.config
 import os
 import subprocess
 import sys
@@ -107,17 +108,46 @@ def dbt_run_event_failed(
     )
 
 
-openlineage_logger = logging.getLogger("openlineage.dbt")
-openlineage_logger.setLevel(os.getenv("OPENLINEAGE_DBT_LOGGING", "INFO"))
-openlineage_logger.addHandler(logging.StreamHandler(sys.stdout))
-# deprecated dbtol logger
-logger = logging.getLogger("dbtol")
-for handler in openlineage_logger.handlers:
-    logger.addHandler(handler)
-    logger.setLevel(openlineage_logger.level)
+def set_up_logger():
+    """
+    Set up the logger for the OpenLineage dbt wrapper.
+    """
+    log_format = "[%(asctime)s] [%(levelname)s] [%(name)s:%(lineno)d] - %(message)s"
+    logging.config.dictConfig(
+        {
+            "version": 1,
+            "disable_existing_loggers": False,
+            "formatters": {
+                "default": {
+                    "format": log_format,
+                }
+            },
+            "handlers": {
+                "console": {
+                    "class": "logging.StreamHandler",
+                    "formatter": "default",
+                    "stream": sys.stdout,
+                },
+            },
+            "loggers": {
+                "openlineage": {
+                    "handlers": ["console"],
+                    "level": os.getenv("OPENLINEAGE_DBT_LOGGING", "INFO").upper(),
+                    "propagate": True,
+                },
+            },
+        }
+    )
+    logger = logging.getLogger("openlineage.dbt")
+    custom_logging_level = os.getenv("OPENLINEAGE_CLIENT_LOGGING", None)
+    if custom_logging_level:
+        logger.setLevel(custom_logging_level)
+    return logger
 
 
 def main():
+    logger = set_up_logger()
+
     logger.info("Running OpenLineage dbt wrapper version %s", __version__)
 
     args = sys.argv[1:]
@@ -151,8 +181,11 @@ def main():
 def consume_structured_logs(
     target: str, project_dir: str, profile_name: str, model_selector: str, models: List[str]
 ):
-    logger.info("This wrapper will send OpenLineage events while the models are executing.")
-    dbt_integration_return_code = 0
+    logger = logging.getLogger("openlineage.dbt")
+    logger.info(
+        "This wrapper is using --consume-structured-logs: will send OpenLineage "
+        "events while the models are executing."
+    )
     job_namespace = os.environ.get("OPENLINEAGE_NAMESPACE", "dbt")
     dbt_command_line = remove_command_line_option(sys.argv, CONSUME_STRUCTURED_LOGS_COMMAND_OPTION)
     dbt_command_line = ["dbt"] + dbt_command_line[1:]
@@ -167,7 +200,7 @@ def consume_structured_logs(
         models=models,
         selector=model_selector,
     )
-    logger.info(f"dbt-ol will read logs from {processor.dbt_log_file_path}")
+    logger.info("dbt-ol will read logs from %s", processor.dbt_log_file_path)
     client = OpenLineageClient()
     emitted_events = 0
     try:
@@ -175,6 +208,8 @@ def consume_structured_logs(
             try:
                 client.emit(event)
                 emitted_events += 1
+                if emitted_events % 50 == 0:
+                    logger.debug("Processed %d events", emitted_events)
             except Exception as e:
                 logger.warning(
                     "OpenLineage client failed to emit event %s runId %s. Exception: %s",
@@ -185,16 +220,25 @@ def consume_structured_logs(
                 )
     except UnsupportedDbtCommand as e:
         logger.error(e)
-        dbt_integration_return_code = 1
+    except Exception:
+        logger.exception(
+            "OpenLineage failed to process dbt execution. This does not make dbt execution "
+            "fail, however, data might not end up in your configured lineage backend."
+        )
+    finally:
+        # Will wait for async events to be sent if async config is enabled
+        logger.debug("Waiting for events to be sent.")
+        client.close()
 
     logger.info("Emitted %d OpenLineage events", emitted_events)
     logger.info("Underlying dbt execution returned %d", processor.dbt_command_return_code)
-    return processor.dbt_command_return_code or dbt_integration_return_code
+    return processor.dbt_command_return_code
 
 
 def consume_local_artifacts(
     target: str, project_dir: str, profile_name: str, model_selector: str, models: List[str]
 ):
+    logger = logging.getLogger("openlineage.dbt")
     logger.info("This wrapper will send OpenLineage events at the end of dbt execution.")
     parent_id = os.getenv("OPENLINEAGE_PARENT_ID")
     parent_run_metadata = None
@@ -229,15 +273,6 @@ def consume_local_artifacts(
         job_name=start_event.job.name,
         job_namespace=start_event.job.namespace,
     )
-
-    # Failed start event emit should not stop dbt command from running.
-    emitted_events = 0
-    try:
-        client.emit(start_event)
-        emitted_events += 1
-    except Exception as e:
-        logger.warning("OpenLineage client failed to emit start event. Exception: %s", e)
-
     # Set parent run metadata to use it as parent run facet
     processor.dbt_run_metadata = dbt_run_metadata
 
@@ -289,11 +324,26 @@ def consume_local_artifacts(
             parent_run_metadata=parent_run_metadata,
         )
 
+    if events:
+        # Pass some run facets from extracted dbt events to wrapping start and stop events
+        event = events[0]
+        if "dbt_version" in event.run.facets:
+            start_event.run.facets["dbt_version"] = event.run.facets["dbt_version"]
+            terminal_event.run.facets["dbt_version"] = event.run.facets["dbt_version"]
+
+        if "processing_engine" in event.run.facets:
+            start_event.run.facets["processing_engine"] = event.run.facets["processing_engine"]
+            terminal_event.run.facets["processing_engine"] = event.run.facets["processing_engine"]
+
+        if "dbt_run" in event.run.facets:
+            start_event.run.facets["dbt_run"] = event.run.facets["dbt_run"]
+            terminal_event.run.facets["dbt_run"] = event.run.facets["dbt_run"]
+
+    emitted_events = 0
+    all_events = [start_event, *events, terminal_event]
     for event in tqdm(
-        events + [terminal_event],
+        all_events,
         desc="Emitting OpenLineage events",
-        initial=1,
-        total=len(events) + 2,
     ):
         try:
             client.emit(event)
@@ -306,6 +356,7 @@ def consume_local_artifacts(
                 e,
                 exc_info=True,
             )
+    client.close()
     logger.info("Emitted %d OpenLineage events", emitted_events)
     logger.info("Underlying dbt execution returned %d", return_code)
     return return_code

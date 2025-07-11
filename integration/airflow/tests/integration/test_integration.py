@@ -56,12 +56,6 @@ params = [
         marks=pytest.mark.skipif(not IS_GCP_AUTH, reason="no gcp credentials"),
     ),
     pytest.param(
-        "dbt",
-        "requests/dbt_bigquery.json",
-        True,
-        marks=pytest.mark.skipif(not IS_GCP_AUTH, reason="no gcp credentials or dbt tests disabled"),
-    ),
-    pytest.param(
         "gcs_dag",
         "requests/gcs.json",
         True,
@@ -96,43 +90,11 @@ params = [
         "trino_orders_popular_day_of_week",
         "requests/trino.json",
         True,
-        marks=pytest.mark.skipif(not IS_AIRFLOW_VERSION_ENOUGH("2.4.0"), reason="Airflow < 2.4.0"),
-    ),
-    pytest.param(
-        "dbt",
-        "requests/dbt_snowflake.json",
-        True,
-        marks=[
-            pytest.mark.skipif(
-                not IS_AIRFLOW_VERSION_ENOUGH(SNOWFLAKE_AIRFLOW_TEST_VERSION),
-                reason=f"Airflow < {SNOWFLAKE_AIRFLOW_TEST_VERSION}",
-            ),
-            pytest.mark.skipif(
-                os.environ.get("SNOWFLAKE_PASSWORD", "") == "",
-                reason="no snowflake credentials",
-            ),
-        ],
-    ),
-    pytest.param(
-        "snowflake",
-        "requests/snowflake.json",
-        True,
-        marks=[
-            pytest.mark.skipif(
-                not IS_AIRFLOW_VERSION_ENOUGH(SNOWFLAKE_AIRFLOW_TEST_VERSION),
-                reason=f"Airflow < {SNOWFLAKE_AIRFLOW_TEST_VERSION}",
-            ),
-            pytest.mark.skipif(
-                os.environ.get("SNOWFLAKE_ACCOUNT_ID", "") == "",
-                reason="no snowflake credentials",
-            ),
-        ],
     ),
     pytest.param(
         "mapped_dag",
         "requests/mapped_dag.json",
         False,
-        marks=pytest.mark.skipif(not IS_AIRFLOW_VERSION_ENOUGH("2.4.0"), reason="Airflow < 2.4.0"),
     ),
     pytest.param("task_group_dag", "requests/task_group.json", False),
     ("sftp_dag", "requests/sftp.json", True),
@@ -140,7 +102,6 @@ params = [
         "ftp_dag",
         "requests/ftp.json",
         True,
-        marks=pytest.mark.skipif(not IS_AIRFLOW_VERSION_ENOUGH("2.5.0"), reason="Airflow < 2.5.0"),
     ),
     pytest.param("s3copy_dag", "requests/s3copy.json", True),
     pytest.param("s3transform_dag", "requests/s3transform.json", True),
@@ -406,7 +367,6 @@ def test_failing_dag(dag_id, request_path, check_duplicates, airflow_db_conn):
             "dag_event_order",
             "requests/dag_order",
             [],
-            marks=pytest.mark.skipif(not IS_AIRFLOW_VERSION_ENOUGH("2.5.0rc2"), reason="Airflow <= 2.5.0rc2"),
         ),
     ],
 )
@@ -460,7 +420,6 @@ def test_airflow_run_facet(dag_id, request_path, airflow_db_conn):
     assert check_matches(expected_events, actual_events) is True
 
 
-@pytest.mark.skipif(not IS_AIRFLOW_VERSION_ENOUGH("2.4.0"), reason="Airflow < 2.4.0")
 def test_airflow_mapped_task_facet(airflow_db_conn):
     dag_id = "mapped_dag"
     task_id = "multiply"
