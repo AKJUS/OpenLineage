@@ -115,6 +115,15 @@ export const Producers: Array<Partner> = [
     org_url: "https://www.snaplogic.com/",
   },
   {
+    image: "matillion_logo.svg",
+    org: "Matillion",
+    full_name: "Matillion",
+    description:
+      "Matillion's Lineage Events API provides a feed of metadata events in OpenLineage format from across your Data Productivity Cloud landscape.",
+    docs_url: "https://docs.matillion.com/data-productivity-cloud/hub/docs/data-lineage",
+    org_url: "https://matillion.com/",
+  },
+  {
     image: "oleander_logo_full.png",
     org: "oleander",
     full_name: "oleander",
@@ -122,5 +131,14 @@ export const Producers: Array<Partner> = [
       "Data Observability. Simplified. Unified API for lineage metadata interoperability across platforms like Airflow, Spark, Flink and more.",
     docs_url: "https://docs.oleander.dev/",
     org_url: "https://oleander.dev/",
+  },
+  {
+    image: "debezium_logo.svg",
+    org: "Debezium",
+    full_name: "Debezium",
+    description:
+      "Debezium's OpenLineage integration automatically emits all connector information as OpenLineage metadata",
+    docs_url: "https://debezium.io/documentation/reference/integrations/openlineage.html",
+    org_url: "https://debezium.io/",
   },
 ];

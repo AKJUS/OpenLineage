@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://openlineage.io/spec/facets/1-0-1/DocumentationJobFacet.json",
+  "$id": "https://openlineage.io/spec/facets/1-1-0/DocumentationJobFacet.json",
   "$defs": {
     "DocumentationJobFacet": {
       "allOf": [
@@ -13,6 +13,11 @@
             "description": {
               "description": "The description of the job.",
               "type": "string"
+            },
+            "contentType": {
+              "description": "MIME type of the description field content.",
+              "type": "string",
+              "example": "application/json, text/markdown"
             }
           },
           "required": ["description"]

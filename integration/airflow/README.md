@@ -66,12 +66,14 @@ For Airflow 2.7+ use the native Airflow OpenLineage provider
 
 ### Airflow 2.3 - 2.6
 
+> **Note:** The last version of openlineage-airflow to support Airflow versions 2.3-2.4 is **1.33.0**
+
 The integration automatically registers itself starting from Airflow 2.3 if it's installed on the Airflow worker's Python.
 This means you don't have to do anything besides configuring it, which is described in the Configuration section.
 
 ### Airflow 2.1 - 2.2
 
-> **Note:** As of version 1.15.0, Airflow versions below 2.3.0 are no longer supported. The description below pertains to earlier versions.
+> **Note:** The last version of openlineage-airflow to support Airflow versions 2.1-2.2 is **1.14.0**.
 
 This method has limited support: it does not support tracking failed jobs, and job starts are registered only when a job ends.
 
@@ -285,12 +287,16 @@ However, all facets inheriting from `BaseFacet` should use the `_additional_skip
 
 ## Development
 
-To install all dependencies for _local_ development:
+For detailed development setup instructions, see the [Python development setup guide](https://openlineage.io/docs/development/developing/python/setup).
 
-The Airflow integration depends on `openlineage.sql`, `openlineage.common` and `openlineage.client.python`. You should install them first independently or try to install them with following command:
-
+Quick start:
 ```bash
-$ pip install -r dev-requirements.txt
+# From the repository root
+$ make setup-airflow
+
+# Or manually
+$ cd integration/airflow
+$ uv sync --extra dev --extra airflow
 ```
 
 There is also a bash script that can run an arbitrary Airflow image with an OpenLineage integration built from the current branch. Additionally, it mounts OpenLineage Python packages as Docker volumes. This enables you to change your code without the need to constantly rebuild Docker images to run tests.
@@ -316,7 +322,7 @@ $ AIRFLOW_IMAGE=<name-of-airflow-image> ./tests/integration/docker/up.sh
 ```
 
 ```bash
-$ AIRFLOW_IMAGE=apache/airflow:2.3.1-python3.9 ./tests/integration/docker/up.sh
+$ AIRFLOW_IMAGE=apache/airflow:2.5.2-python3.9 ./tests/integration/docker/up.sh
 ```
 
 When using `run-dev-airflow.sh`, you can add the `-i` flag or `--attach-integration` flag to run integration tests in a dev environment.

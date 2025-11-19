@@ -18,6 +18,7 @@ import io.openlineage.spark3.agent.lifecycle.plan.catalog.CatalogUtils3;
 import io.openlineage.spark3.agent.utils.PlanUtils3;
 import java.lang.reflect.InvocationTargetException;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -90,13 +91,16 @@ public class CreateReplaceOutputDatasetBuilder
 
   protected List<OpenLineage.OutputDataset> apply(
       SparkListenerEvent event, CreateTableAsSelect plan) {
+    Map<String, String> tableProperties =
+        new HashMap(ScalaConversionUtils.<String, String>fromMap(plan.tableSpec().properties()));
+    tableProperties.putAll(ScalaConversionUtils.<String, String>fromMap(plan.writeOptions()));
     return callCatalogMethod(plan.name())
         .map(
             catalogPlugin ->
                 apply(
                     event,
                     catalogPlugin,
-                    ScalaConversionUtils.<String, String>fromMap(plan.tableSpec().properties()),
+                    tableProperties,
                     plan.tableName(),
                     plan.tableSchema(),
                     LifecycleStateChange.CREATE))
@@ -119,13 +123,16 @@ public class CreateReplaceOutputDatasetBuilder
 
   protected List<OpenLineage.OutputDataset> apply(
       SparkListenerEvent event, ReplaceTableAsSelect plan) {
+    Map<String, String> tableProperties =
+        new HashMap(ScalaConversionUtils.<String, String>fromMap(plan.tableSpec().properties()));
+    tableProperties.putAll(ScalaConversionUtils.<String, String>fromMap(plan.writeOptions()));
     return callCatalogMethod(plan.name())
         .map(
             catalogPlugin ->
                 apply(
                     event,
                     catalogPlugin,
-                    ScalaConversionUtils.<String, String>fromMap(plan.tableSpec().properties()),
+                    tableProperties,
                     plan.tableName(),
                     plan.tableSchema(),
                     LifecycleStateChange.OVERWRITE))
@@ -172,8 +179,7 @@ public class CreateReplaceOutputDatasetBuilder
           version -> DatasetVersionUtils.buildVersionOutputFacets(context, builder, version));
     }
 
-    CatalogUtils3.getStorageDatasetFacet(context, catalog, tableProperties)
-        .map(storageDatasetFacet -> builder.getFacets().storage(storageDatasetFacet));
+    CatalogUtils3.addStorageAndCatalogFacets(context, catalog, tableProperties, builder);
     return Collections.singletonList(outputDataset().getDataset(di.get(), builder));
   }
 

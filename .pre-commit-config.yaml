@@ -61,15 +61,15 @@ repos:
         files: ^client/python/
         exclude: ^.*\.cfg$
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.2.2
+    rev: v0.12.3
     hooks:
       - id: ruff
         name: ruff-lint
         args: [--fix]
-        files: ^client/python/|^dev/|^integration/airflow/|^integration/common/|^integration/dagster/|^integration/dbt/|^integration/spark/|^integration/sql/
+        files: ^client/python/|^dev/|^integration/airflow/|^integration/common/|^integration/dbt/|^integration/spark/|^integration/sql/
       - id: ruff-format
         name: ruff-format
-        files: ^client/python/|^dev/|^integration/airflow/|^integration/common/|^integration/dagster/|^integration/dbt/|^integration/spark/|^integration/sql/
+        files: ^client/python/|^dev/|^integration/airflow/|^integration/common/|^integration/dbt/|^integration/spark/|^integration/sql/
   - repo: https://github.com/codespell-project/codespell
     rev: v2.3.0
     hooks:
@@ -98,11 +98,43 @@ repos:
         entry: .pre_commit/check_version_update_path.sh
         files: new-version\.sh$|\.gradle$|gradle\.properties$|README\.md$|version\.properties$
         pass_filenames: false
+      - id: forbid-attr-s
+        name: Check for @attr.s
+        description: "Checks if @attr.s is used instead of desired @attr.define"
+        language: system
+        entry:
+          bash -c 'grep -n -E "@attr\.s" "$@" && exit 1 || rc=$?; if [ $rc -eq 1 ]; then exit 0; else exit $rc; fi' --
+        files: "\\.(py|md)$"
+        # Exclude tests directories and deprecated modules that can use @attr.s
+        exclude: |
+          (?x)^(
+            .*tests.* |
+            client/python/src/openlineage/client/facet\.py |
+            client/python/src/openlineage/client/run\.py
+          )$
+      - id: check-python-generated-imports
+        name: Check python imports from generated modules
+        description: "Checks if objects are correctly imported in python from event_v2 and facet_v2 modules"
+        language: system
+        entry:
+          bash -c 'grep -n -E "from openlineage\.client\.generated" "$@" && exit 1 || rc=$?; if [ $rc -eq 1 ]; then exit
+          0; else exit $rc; fi' --
+        files: "\\.py$"
+        # Exclude internal modules that must import this way
+        exclude: |
+          (?x)^(
+            client/python/src/openlineage/client/generated/.* |
+            client/python/src/openlineage/client/facet_v2\.py |
+            client/python/src/openlineage/client/event_v2\.py |
+            client/python/src/openlineage/client/generator/base\.py |
+            client/python/tests/generator/test_base\.py
+          )$
       - id: prettier
         name: prettier
         description: ""
         entry: prettier --write --ignore-unknown
-        files: ^spec/|\.ts$|\.tsx$|^website.*\.js$|^website.*\.jsx$|\.css$|^\..*\.yaml$|\^\..*\.yml$
+        files: ^spec/|\.ts$|\.tsx$|^website.*\.js$|^website.*\.jsx$|\.css$|^\..*\.yaml$|\^\..*\.yml$|^integration/.*\.json$
+        exclude: run_results\.json|manifest\.json|catalog\.json|metadata/.*\.json|bigquery/.*\.json|data/great_expectations/|integration/airflow/tests/extractors/|test_data/serde/
         args: ["--print-width=120", "--prose-wrap=always"]
         language: node
         types: [text]
@@ -124,11 +156,35 @@ repos:
       - id: generate_facets
         name: Generate OpenLineage facets for Python client.
         language: python
-        entry: python ./client/python/openlineage/client/generator/generate.py
-        files: ^spec/.*\.json$|^client/python/facets\.py$
+        entry: python ./client/python/src/openlineage/client/generator/generate.py
+        files: ^spec/.*\.json$|^client/python/src/openlineage/client/facet.*\.py$|^client/python/src/openlineage/client/event_v2\.py$|^client/python/src/openlineage/client/generat.*|^client/python/redact_fields\.yml$
         exclude: ^spec/tests/.*$
         pass_filenames: false
-        additional_dependencies: ["ruff==0.3.5", "click", "datamodel-code-generator==0.25.4"]
+        additional_dependencies: ["ruff==0.12.10", "click", "datamodel-code-generator==0.33.0"]
+      - id: mypy-client-python
+        name: mypy type check - Python client
+        language: system
+        entry: bash -c 'cd client/python && uv sync --extra dev && uv run mypy --explicit-package-bases src'
+        files: ^client/python/src/.*\.py$
+        pass_filenames: false
+      - id: mypy-integration-common
+        name: mypy type check - Integration common
+        language: system
+        entry: bash -c 'cd integration/common && uv sync --extra dev && uv run mypy --ignore-missing-imports src'
+        files: ^integration/common/src/.*\.py$
+        pass_filenames: false
+      - id: mypy-integration-airflow
+        name: mypy type check - Airflow integration
+        language: system
+        entry: bash -c 'cd integration/airflow && uv sync --extra dev && uv run mypy --ignore-missing-imports src'
+        files: ^integration/airflow/src/.*\.py$|^integration/airflow/openlineage/.*\.py$
+        pass_filenames: false
+      - id: mypy-integration-dbt
+        name: mypy type check - dbt integration
+        language: system
+        entry: bash -c 'cd integration/dbt && uv sync --extra dev && uv run mypy --ignore-missing-imports src'
+        files: ^integration/dbt/src/.*\.py$|^integration/dbt/openlineage/.*\.py$
+        pass_filenames: false
       - id: check_facets_redactions
         name: Check if all Facets have redacted fields defined
         language: python
@@ -164,7 +220,7 @@ repos:
         description: "Runs the PMD static code analyzer - Spark."
         language: script
         entry: .pre_commit/run-pmd.sh --java-version 17 --ruleset-file integration/spark/pmd-openlineage.xml
-        files: ^integration/flink/.*\.java$
+        files: ^integration/spark/.*\.java$
         exclude: ".*test.*"
         require_serial: true
       - id: spotless-client-java
@@ -183,3 +239,5 @@ repos:
         files: ^integration/spark/.*\.java$
         exclude: ".*test.*"
         pass_filenames: false
+default_language_version:
+  python: "3.10"

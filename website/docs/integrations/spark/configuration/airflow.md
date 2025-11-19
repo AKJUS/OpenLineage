@@ -50,9 +50,9 @@ The following properties are necessary for the automatic creation of the `Parent
 Additionally, in version 1.31.0 and later, the following properties are also added to `ParentRunFacet` that 
 allow easier connection of the root (top-level parent) job to the children jobs:
 
-- `spark.openlineage.parentJobNamespace`
-- `spark.openlineage.parentJobName`
-- `spark.openlineage.parentRunId`
+- `spark.openlineage.rootParentJobNamespace`
+- `spark.openlineage.rootParentJobName`
+- `spark.openlineage.rootParentRunId`
 
 
 Refer to the [Spark Configuration](spark_conf.md) documentation for more information on these properties.
@@ -78,8 +78,8 @@ t1 = DataprocSubmitJobOperator(
                 "spark.extraListeners": "io.openlineage.spark.agent.OpenLineageSparkListener",
                 "spark.jars.packages": "io.openlineage:openlineage-spark_${SCALA_BINARY_VERSION}:{{PREPROCESSOR:OPENLINEAGE_VERSION}}",
                 "spark.openlineage.transport.url": openlineage_url,
+                "spark.openlineage.transport.auth.type": "api_key",
                 "spark.openlineage.transport.auth.apiKey": api_key,
-                "spark.openlineage.transport.auth.type": "apiKey",
                 "spark.openlineage.namespace": openlineage_spark_namespace,
                 "spark.openlineage.parentJobNamespace": "{{ macros.OpenLineageProviderPlugin.lineage_job_namespace() }}",
                 "spark.openlineage.parentJobName": "{{ macros.OpenLineageProviderPlugin.lineage_job_name(task_instance) }}",

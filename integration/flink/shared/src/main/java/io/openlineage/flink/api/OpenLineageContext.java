@@ -18,6 +18,7 @@ import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.NonNull;
 import lombok.Setter;
+import lombok.ToString;
 import org.apache.flink.api.common.JobID;
 
 /**
@@ -31,6 +32,7 @@ import org.apache.flink.api.common.JobID;
  */
 @Builder
 @Getter
+@ToString
 public class OpenLineageContext {
 
   @Builder.Default UUID runUuid = UUIDUtils.generateNewUUID();
@@ -64,6 +66,6 @@ public class OpenLineageContext {
     private String jobNamespace;
 
     /** Assigned during the event emitted. */
-    @Setter private JobID flinkJobId;
+    private JobID flinkJobId;
   }
 }

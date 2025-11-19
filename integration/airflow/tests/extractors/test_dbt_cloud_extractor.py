@@ -7,15 +7,14 @@ from unittest.mock import MagicMock
 
 import pytest
 import pytz
-from openlineage.airflow.utils import try_import_from_string
-from openlineage.client.uuid import generate_new_uuid
-from packaging.version import Version
-from pytest_mock import MockerFixture
-
 from airflow.models import DAG, TaskInstance
 from airflow.utils import timezone
 from airflow.utils.state import State
 from airflow.version import version as AIRFLOW_VERSION
+from openlineage.airflow.utils import try_import_from_string
+from openlineage.client.uuid import generate_new_uuid
+from packaging.version import Version
+from pytest_mock import MockerFixture
 
 DbtCloudRunJobOperator = try_import_from_string(
     "airflow.providers.dbt.cloud.operators.dbt.DbtCloudRunJobOperator"
@@ -101,8 +100,10 @@ class TestDbtCloudExtractorE2E:
         mock_client.emit.side_effect = emit_event
         mock_hook.get_project.return_value.json.return_value = {
             "data": {
+                "name": "dbt-project",
                 "connection": {
                     "type": "snowflake",
+                    "name": "snowflake",
                     "details": {
                         "account": "gp21411.us-east-1",
                         "database": "SANDBOX",
@@ -111,7 +112,7 @@ class TestDbtCloudExtractorE2E:
                         "client_session_keep_alive": False,
                         "role": None,
                     },
-                }
+                },
             }
         }
         mock_hook.get_job.return_value.json.return_value = {

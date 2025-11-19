@@ -7,7 +7,12 @@
 			"name": "random-gcp-project.dbt_test1.dbt_bigquery_test.test_first_dbt_model.build.run"
 		},
 		"run": {
-			"runId": "{{ any(result) }}"
+			"runId": "{{ any(result) }}",
+			"facets": {
+				"dbt_run": {
+					"invocation_id"	: "b1d24c06-5f63-40e4-a0a2-b0a8d46fb18f"
+				}
+			}
 		}
 	},
 	{
@@ -104,7 +109,7 @@
 					},
 					"schema": {
 						"_producer": "https://github.com/OpenLineage/OpenLineage/tree/0.0.1/integration/dbt",
-						"_schemaURL": "https://openlineage.io/spec/facets/1-1-1/SchemaDatasetFacet.json#/$defs/SchemaDatasetFacet",
+						"_schemaURL": "https://openlineage.io/spec/facets/1-2-0/SchemaDatasetFacet.json#/$defs/SchemaDatasetFacet",
 						"fields": [
 							{
 								"description": "The primary key for this table",

@@ -5,6 +5,7 @@ import json
 import os
 import textwrap
 from enum import Enum
+from pathlib import Path
 from unittest import mock
 
 import attr
@@ -17,6 +18,8 @@ from openlineage.common.provider.dbt.local import (
 )
 from openlineage.common.provider.dbt.processor import ParentRunMetadata
 from openlineage.common.test import match
+
+CURRENT_DIR = str(Path(__file__).absolute().parent)
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -43,27 +46,29 @@ def serialize(inst, field, value):
 
 
 @pytest.mark.parametrize(
-    "path",
+    ("path", "job_name"),
     [
-        "tests/dbt/small",
-        "tests/dbt/large",
-        "tests/dbt/profiles",
-        "tests/dbt/catalog",
-        "tests/dbt/fail",
-        "tests/dbt/build",
-        "tests/dbt/compiled_code",
-        "tests/dbt/spark/thrift",
-        "tests/dbt/spark/odbc",
-        "tests/dbt/postgres",
-        "tests/dbt/snapshot",
-        "tests/dbt/duckdb",
+        (CURRENT_DIR + "/small", "dbt-job-name"),
+        (CURRENT_DIR + "/large", None),
+        (CURRENT_DIR + "/profiles", None),
+        (CURRENT_DIR + "/catalog", None),
+        (CURRENT_DIR + "/fail", None),
+        (CURRENT_DIR + "/build", None),
+        (CURRENT_DIR + "/compiled_code", None),
+        (CURRENT_DIR + "/spark/thrift", None),
+        (CURRENT_DIR + "/spark/odbc", "dbt-job-name"),
+        (CURRENT_DIR + "/postgres", None),
+        (CURRENT_DIR + "/snapshot", None),
+        (CURRENT_DIR + "/duckdb", None),
     ],
 )
-def test_dbt_parse_and_compare_event(path, parent_run_metadata):
+def test_dbt_parse_and_compare_event(path, job_name, parent_run_metadata):
     processor = DbtLocalArtifactProcessor(
         producer="https://github.com/OpenLineage/OpenLineage/tree/0.0.1/integration/dbt",
         job_namespace="job-namespace",
         project_dir=path,
+        dbt_command_line=["dbt-ol", "run", "--profiles-dir", path],
+        openlineage_job_name=job_name,
     )
     processor.dbt_run_metadata = parent_run_metadata
     dbt_events = processor.parse()
@@ -78,8 +83,8 @@ def test_dbt_parse_and_compare_event(path, parent_run_metadata):
 @pytest.mark.parametrize(
     "path",
     [
-        "tests/dbt/test",
-        "tests/dbt/no_test_metadata",
+        CURRENT_DIR + "/test",
+        CURRENT_DIR + "/no_test_metadata",
     ],
 )
 @mock.patch("openlineage.common.provider.dbt.processor.generate_new_uuid")
@@ -98,6 +103,7 @@ def test_dbt_parse_dbt_test_event(mock_datetime, mock_uuid, parent_run_metadata,
         producer="https://github.com/OpenLineage/OpenLineage/tree/0.0.1/integration/dbt",
         job_namespace="dbt-test-namespace",
         project_dir=path,
+        dbt_command_line=["dbt-ol", "run", "--profiles-dir", path],
     )
     processor.dbt_run_metadata = parent_run_metadata
 
@@ -129,9 +135,10 @@ def test_dbt_parse_profile_with_env_vars(mock_uuid, parent_run_metadata):
 
     processor = DbtLocalArtifactProcessor(
         producer="https://github.com/OpenLineage/OpenLineage/tree/0.0.1/integration/dbt",
-        project_dir="tests/dbt/env_vars",
+        project_dir=CURRENT_DIR + "/env_vars",
         target="prod",
         job_namespace="ol-namespace",
+        dbt_command_line=["dbt-ol", "run", "--profiles-dir", CURRENT_DIR + "/env_vars"],
     )
     processor.dbt_run_metadata = parent_run_metadata
 
@@ -140,7 +147,7 @@ def test_dbt_parse_profile_with_env_vars(mock_uuid, parent_run_metadata):
         attr.asdict(event, value_serializer=serialize)
         for event in dbt_events.starts + dbt_events.completes + dbt_events.fails
     ]
-    with open("tests/dbt/env_vars/result.json") as f:
+    with open(CURRENT_DIR + "/env_vars/result.json") as f:
         assert match(json.load(f), events)
 
 
@@ -217,7 +224,7 @@ def test_jinja_list(jinja_env):
 
 
 def test_logging_handler_warns():
-    path = "tests/dbt/test/target/manifest.json"
+    path = CURRENT_DIR + "/test/target/manifest.json"
     logger = mock.Mock()
     DbtLocalArtifactProcessor.load_metadata(path, [1], logger)
 
@@ -228,7 +235,7 @@ def test_logging_handler_warns():
 
 
 def test_logging_handler_does_not_warn():
-    path = "tests/dbt/test/target/manifest.json"
+    path = CURRENT_DIR + "/test/target/manifest.json"
     logger = mock.Mock()
     DbtLocalArtifactProcessor.load_metadata(path, [2], logger)
 
@@ -239,7 +246,7 @@ def test_logging_handler_does_not_warn():
 def test_build_target_path_with_user_defined():
     processor = DbtLocalArtifactProcessor(
         producer="https://github.com/OpenLineage/OpenLineage/tree/0.0.1/integration/dbt",
-        project_dir="tests/dbt/env_vars",
+        project_dir=CURRENT_DIR + "/env_vars",
         target="prod",
         target_path="arg-target-name",
         job_namespace="ol-namespace",
@@ -251,7 +258,7 @@ def test_build_target_path_with_user_defined():
 def test_build_target_path_with_envvar():
     processor = DbtLocalArtifactProcessor(
         producer="https://github.com/OpenLineage/OpenLineage/tree/0.0.1/integration/dbt",
-        project_dir="tests/dbt/env_vars",
+        project_dir=CURRENT_DIR + "/env_vars",
         target="prod",
         job_namespace="ol-namespace",
     )
@@ -268,7 +275,7 @@ def test_build_target_path_with_envvar():
 def test_build_target_path(test_name, dbt_project, expected):
     processor = DbtLocalArtifactProcessor(
         producer="https://github.com/OpenLineage/OpenLineage/tree/0.0.1/integration/dbt",
-        project_dir="tests/dbt/env_vars",
+        project_dir=CURRENT_DIR + "/env_vars",
         target="prod",
         job_namespace="ol-namespace",
     )
@@ -287,7 +294,7 @@ def test_column_lineage():
     """
     processor = DbtLocalArtifactProcessor(
         producer="https://github.com/OpenLineage/OpenLineage/tree/0.0.1/integration/dbt",
-        project_dir="tests/dbt/env_vars",
+        project_dir=CURRENT_DIR + "/env_vars",
         target="prod",
         job_namespace="ol-namespace",
     )

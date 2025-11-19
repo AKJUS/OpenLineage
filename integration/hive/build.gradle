@@ -171,6 +171,8 @@ publishing {
 nexusPublishing {
     repositories {
         sonatype {
+            nexusUrl.set(uri("https://ossrh-staging-api.central.sonatype.com/service/local/"))
+            snapshotRepositoryUrl.set(uri("https://central.sonatype.com/repository/maven-snapshots/"))
             username = System.getenv('RELEASE_USERNAME')
             password = System.getenv('RELEASE_PASSWORD')
         }
@@ -181,7 +183,9 @@ signing {
     required { isReleaseVersion }
     def signingKey = findProperty("signingKey")
     def signingPassword = findProperty("signingPassword")
-    useInMemoryPgpKeys(signingKey, signingPassword)
+    if (signingKey && signingPassword) {
+        useInMemoryPgpKeys(signingKey, signingPassword)
+    }
     sign publishing.publications.mavenJava
 }
 

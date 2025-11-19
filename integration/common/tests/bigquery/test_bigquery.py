@@ -1,17 +1,23 @@
 # Copyright 2018-2025 contributors to the OpenLineage project
 # SPDX-License-Identifier: Apache-2.0
 
+import copy
 import json
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
 from openlineage.client.facet_v2 import external_query_run
+from openlineage.client.serde import Serde
 from openlineage.common.dataset import Dataset, Field, Source
 from openlineage.common.provider.bigquery import (
     BigQueryDatasetsProvider,
+    BigQueryErrorRunFacet,
     BigQueryJobRunFacet,
     BigQueryStatisticsDatasetFacet,
 )
+
+CURRENT_DIR = str(Path(__file__).absolute().parent)
 
 
 def read_file_json(file):
@@ -23,8 +29,8 @@ class TableMock(MagicMock):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.inputs = [
-            read_file_json("tests/bigquery/table_details.json"),
-            read_file_json("tests/bigquery/out_table_details.json"),
+            read_file_json(CURRENT_DIR + "/table_details.json"),
+            read_file_json(CURRENT_DIR + "/out_table_details.json"),
         ]
 
     @property
@@ -33,7 +39,7 @@ class TableMock(MagicMock):
 
 
 def test_bq_job_information():
-    job_details = read_file_json("tests/bigquery/job_details.json")
+    job_details = read_file_json(CURRENT_DIR + "/job_details.json")
     client = MagicMock()
     client.get_job.return_value._properties = job_details
 
@@ -76,8 +82,8 @@ def test_bq_job_information():
 
 
 def test_bq_script_job_information():
-    script_job_details = read_file_json("tests/bigquery/script_job_details.json")
-    query_job_details = read_file_json("tests/bigquery/job_details.json")
+    script_job_details = read_file_json(CURRENT_DIR + "/script_job_details.json")
+    query_job_details = read_file_json(CURRENT_DIR + "/job_details.json")
     client = MagicMock()
     client.get_job.side_effect = [
         MagicMock(_properties=script_job_details),
@@ -224,3 +230,21 @@ def test_get_statistics_dataset_facet_with_stats():
     result = BigQueryDatasetsProvider._get_statistics_dataset_facet(properties)
     assert result.rowCount == 123
     assert result.size == 321
+
+
+def test_facet_copy_serialization_bq_job_run_facet():
+    facet = BigQueryJobRunFacet(cached=True, billedBytes=123, properties="properties", producer="producer")
+    facet_copy = copy.deepcopy(facet)
+    assert Serde.to_json(facet) == Serde.to_json(facet_copy)
+
+
+def test_facet_copy_serialization_bq_stats_dataset_facet():
+    facet = BigQueryStatisticsDatasetFacet(rowCount=123, size=321, producer="producer")
+    facet_copy = copy.deepcopy(facet)
+    assert Serde.to_json(facet) == Serde.to_json(facet_copy)
+
+
+def test_facet_copy_serialization_bq_error_run_facet():
+    facet = BigQueryErrorRunFacet(clientError="clientError", parserError="parserError", producer="producer")
+    facet_copy = copy.deepcopy(facet)
+    assert Serde.to_json(facet) == Serde.to_json(facet_copy)

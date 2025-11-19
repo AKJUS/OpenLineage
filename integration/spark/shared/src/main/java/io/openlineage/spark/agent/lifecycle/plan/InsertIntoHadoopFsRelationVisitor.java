@@ -54,7 +54,7 @@ public class InsertIntoHadoopFsRelationVisitor
 
   @Override
   public Optional<String> jobNameSuffix(InsertIntoHadoopFsRelationCommand command) {
-    return getDatasetIdentifier(command).map(di -> trimPath(di.getName()));
+    return getDatasetIdentifier(command).map(di -> trimPath(context, di.getName()));
   }
 
   private Optional<DatasetIdentifier> getDatasetIdentifier(
@@ -66,7 +66,7 @@ public class InsertIntoHadoopFsRelationVisitor
     if (command.catalogTable().isDefined()) {
       return Optional.of(
           PathUtils.fromCatalogTable(
-              command.catalogTable().get(), context.getSparkSession().get()));
+              command.catalogTable().get(), context.getSparkSession().get(), command.outputPath()));
     }
     return Optional.of(PathUtils.fromPath(command.outputPath()));
   }

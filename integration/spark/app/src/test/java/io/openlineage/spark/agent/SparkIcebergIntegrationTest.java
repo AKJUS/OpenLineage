@@ -14,6 +14,8 @@ import static org.mockserver.model.HttpRequest.request;
 
 import com.google.common.collect.ImmutableList;
 import io.openlineage.client.OpenLineage.ColumnLineageDatasetFacet;
+import io.openlineage.client.OpenLineage.IcebergCommitReportOutputDatasetFacet;
+import io.openlineage.client.OpenLineage.IcebergScanReportInputDatasetFacet;
 import io.openlineage.client.OpenLineage.InputDataset;
 import io.openlineage.client.OpenLineage.InputDatasetInputFacets;
 import io.openlineage.client.OpenLineage.InputStatisticsInputDatasetFacet;
@@ -42,13 +44,10 @@ import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.RowFactory;
 import org.apache.spark.sql.SparkSession;
-import org.apache.spark.sql.SparkSession$;
 import org.apache.spark.sql.types.LongType$;
 import org.apache.spark.sql.types.Metadata;
 import org.apache.spark.sql.types.StructField;
 import org.apache.spark.sql.types.StructType;
-import org.assertj.core.api.AbstractObjectAssert;
-import org.assertj.core.api.InstanceOfAssertFactories;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -75,7 +74,7 @@ class SparkIcebergIntegrationTest {
   @BeforeAll
   @SneakyThrows
   public static void beforeAll() {
-    SparkSession$.MODULE$.cleanupAnyExistingSession();
+    Spark4CompatUtils.cleanupAnyExistingSession();
     FileUtils.deleteDirectory(new File("/tmp/iceberg/"));
     mockServer = MockServerUtils.createAndConfigureMockServer(MOCK_SERVER_PORT);
   }
@@ -83,7 +82,7 @@ class SparkIcebergIntegrationTest {
   @AfterAll
   @SneakyThrows
   public static void afterAll() {
-    SparkSession$.MODULE$.cleanupAnyExistingSession();
+    Spark4CompatUtils.cleanupAnyExistingSession();
     MockServerUtils.stopMockServer(mockServer);
   }
 
@@ -249,39 +248,77 @@ class SparkIcebergIntegrationTest {
   }
 
   @Test
-  void testDelete() {
-    clearTables("tbl_delete", "temp");
+  void testDeleteCow() {
+    clearTables("tbl_delete_cow", "temp");
     createTempDataset(2).createOrReplaceTempView("temp");
-
-    spark.sql("CREATE TABLE tbl_delete USING iceberg AS SELECT * FROM temp");
-    spark.sql("DELETE FROM tbl_delete WHERE a=1");
-
-    verifyEvents(mockServer, "pysparkV2DeleteStartEvent.json", "pysparkV2DeleteCompleteEvent.json");
-  }
-
-  @Test
-  void testUpdate() {
-    clearTables("tbl_update", "temp");
-    createTempDataset(2).createOrReplaceTempView("temp");
-
-    spark.sql("CREATE TABLE tbl_update USING iceberg AS SELECT * FROM temp");
-    spark.sql("UPDATE tbl_update SET b=5 WHERE a=1");
-
-    verifyEvents(mockServer, "pysparkV2UpdateStartEvent.json", "pysparkV2UpdateCompleteEvent.json");
-  }
-
-  @Test
-  void testMergeInto() {
-    clearTables("events", "updates");
-    spark.sql("CREATE TABLE events (event_id long, last_updated_at long) USING iceberg");
-    spark.sql("CREATE TABLE updates (event_id long, updated_at long) USING iceberg");
-
-    spark.sql("INSERT INTO events VALUES (1, 1641290276);");
-    spark.sql("INSERT INTO updates VALUES (1, 1641290277);");
-    spark.sql("INSERT INTO updates VALUES (2, 1641290277);");
 
     spark.sql(
-        "MERGE INTO events USING updates "
+        "CREATE TABLE tbl_delete_cow USING iceberg TBLPROPERTIES ('write.delete.mode'='copy-on-write') AS SELECT * FROM temp");
+    spark.sql("DELETE FROM tbl_delete_cow WHERE a=1");
+
+    verifyEvents(
+        mockServer, "pysparkV2DeleteCowStartEvent.json", "pysparkV2DeleteCowCompleteEvent.json");
+  }
+
+  @Test
+  void testDeleteMor() {
+    clearTables("tbl_delete_mor", "temp");
+    createTempDataset(2).createOrReplaceTempView("temp");
+
+    spark.sql(
+        "CREATE TABLE tbl_delete_mor USING iceberg TBLPROPERTIES ('write.delete.mode'='merge-on-read') AS SELECT * FROM temp");
+    spark.sql("DELETE FROM tbl_delete_mor WHERE a=1");
+
+    verifyEvents(
+        mockServer, "pysparkV2DeleteMorStartEvent.json", "pysparkV2DeleteMorCompleteEvent.json");
+  }
+
+  @Test
+  void testUpdateCow() {
+    clearTables("tbl_update_cow", "temp");
+    createTempDataset(2).createOrReplaceTempView("temp");
+
+    spark.sql(
+        "CREATE TABLE tbl_update_cow USING iceberg TBLPROPERTIES ('write.update.mode'='copy-on-write') AS SELECT * FROM temp");
+    spark.sql("UPDATE tbl_update_cow SET b=5 WHERE a=1");
+
+    verifyEvents(
+        mockServer, "pysparkV2UpdateCowStartEvent.json", "pysparkV2UpdateCowCompleteEvent.json");
+  }
+
+  @Test
+  void testUpdateMor() {
+    if (System.getProperty(SPARK_VERSION).startsWith("3.4")) {
+      // This test will not work as Iceberg has unfixed bug with Spark 3.4
+      // https://github.com/apache/iceberg/issues/11821
+      assertThat(true).isTrue();
+      return;
+    }
+
+    clearTables("tbl_update_mor", "temp");
+    createTempDataset(2).createOrReplaceTempView("temp");
+
+    spark.sql(
+        "CREATE TABLE tbl_update_mor USING iceberg TBLPROPERTIES ('write.update.mode'='merge-on-read') AS SELECT * FROM temp");
+    spark.sql("UPDATE tbl_update_mor SET b=5 WHERE a=1");
+
+    verifyEvents(
+        mockServer, "pysparkV2UpdateMorStartEvent.json", "pysparkV2UpdateMorCompleteEvent.json");
+  }
+
+  @Test
+  void testMergeIntoCow() {
+    clearTables("events_cow", "updates_cow");
+    spark.sql(
+        "CREATE TABLE events_cow (event_id long, last_updated_at long) USING iceberg TBLPROPERTIES ('write.merge.mode'='copy-on-write')");
+    spark.sql("CREATE TABLE updates_cow (event_id long, updated_at long) USING iceberg");
+
+    spark.sql("INSERT INTO events_cow VALUES (1, 1641290276);");
+    spark.sql("INSERT INTO updates_cow VALUES (1, 1641290277);");
+    spark.sql("INSERT INTO updates_cow VALUES (2, 1641290277);");
+
+    spark.sql(
+        "MERGE INTO events_cow events USING updates_cow updates "
             + " ON events.event_id = updates.event_id"
             + " WHEN MATCHED THEN UPDATE SET events.last_updated_at = updates.updated_at"
             + " WHEN NOT MATCHED THEN INSERT (event_id, last_updated_at) "
@@ -289,8 +326,39 @@ class SparkIcebergIntegrationTest {
 
     verifyEvents(
         mockServer,
-        "pysparkV2MergeIntoTableStartEvent.json",
-        "pysparkV2MergeIntoTableCompleteEvent.json");
+        "pysparkV2MergeIntoTableCowStartEvent.json",
+        "pysparkV2MergeIntoTableCowCompleteEvent.json");
+  }
+
+  @Test
+  void testMergeIntoMor() {
+    if (System.getProperty(SPARK_VERSION).startsWith("3.4")) {
+      // This test will not work as Iceberg has unfixed bug with Spark 3.4
+      // https://github.com/apache/iceberg/issues/11821
+      assertThat(true).isTrue();
+      return;
+    }
+
+    clearTables("events_mor", "updates_mor");
+    spark.sql(
+        "CREATE TABLE events_mor (event_id long, last_updated_at long) USING iceberg TBLPROPERTIES ('write.merge.mode'='merge-on-read')");
+    spark.sql("CREATE TABLE updates_mor (event_id long, updated_at long) USING iceberg");
+
+    spark.sql("INSERT INTO events_mor VALUES (1, 1641290276);");
+    spark.sql("INSERT INTO updates_mor VALUES (1, 1641290277);");
+    spark.sql("INSERT INTO updates_mor VALUES (2, 1641290277);");
+
+    spark.sql(
+        "MERGE INTO events_mor events USING updates_mor updates "
+            + " ON events.event_id = updates.event_id"
+            + " WHEN MATCHED THEN UPDATE SET events.last_updated_at = updates.updated_at"
+            + " WHEN NOT MATCHED THEN INSERT (event_id, last_updated_at) "
+            + "VALUES (event_id, updated_at)");
+
+    verifyEvents(
+        mockServer,
+        "pysparkV2MergeIntoTableMorStartEvent.json",
+        "pysparkV2MergeIntoTableMorCompleteEvent.json");
   }
 
   @Test
@@ -356,6 +424,12 @@ class SparkIcebergIntegrationTest {
     clearTables("iceberg_temp", "temp");
     createTempDataset(2).createOrReplaceTempView("temp");
     spark.sql("CREATE TABLE iceberg_temp USING iceberg AS SELECT * FROM temp");
+
+    try {
+      Thread.sleep(2000); // To ensure all events are consumed
+    } catch (InterruptedException e) {
+      // ignore
+    }
 
     HttpRequest[] httpRequests =
         mockServer.retrieveRecordedRequests(request().withPath("/api/v1/lineage"));
@@ -514,12 +588,9 @@ class SparkIcebergIntegrationTest {
             events.stream()
                 .flatMap(e -> e.getInputs().stream())
                 .filter(e -> e.getName().endsWith("stats_source1"))
-                .filter(e -> e.getInputFacets() != null)
-                .map(i -> i.getInputFacets())
+                .map(InputDataset::getInputFacets)
                 .filter(Objects::nonNull)
-                .map(i -> i.getAdditionalProperties())
-                .filter(Objects::nonNull)
-                .filter(f -> f.containsKey("icebergScanReport"))
+                .map(InputDatasetInputFacets::getIcebergScanReport)
                 .filter(Objects::nonNull)
                 .findFirst())
         .isPresent();
@@ -569,42 +640,23 @@ class SparkIcebergIntegrationTest {
             .collect(Collectors.toList());
 
     // get scan report facet
-    AbstractObjectAssert<?, ?> icebergScanReport =
-        assertThat(inputFacets.stream())
-            .map(l -> l.getAdditionalProperties())
-            .filteredOn(Objects::nonNull)
-            .filteredOn(e -> e.containsKey("icebergScanReport"))
-            .isNotEmpty()
-            .map(e -> e.get("icebergScanReport"))
-            .map(
-                e -> {
-                  log.info(
-                      "Additional properties from {} {}",
-                      e.getClass(),
-                      OpenLineageClientUtils.toJson(e));
-                  return e.getAdditionalProperties();
-                })
-            .singleElement();
+    Optional<IcebergScanReportInputDatasetFacet> icebergScanReport =
+        inputFacets.stream()
+            .map(InputDatasetInputFacets::getIcebergScanReport)
+            .filter(Objects::nonNull)
+            .findFirst();
 
-    icebergScanReport
-        .extracting("filterDescription", "projectedFieldNames")
-        .doesNotContainNull()
-        .contains("", new ArrayList<>(Arrays.asList("a", "b")));
+    assertThat(icebergScanReport).isPresent();
+    assertThat(icebergScanReport.get().getFilterDescription()).isEqualTo("");
+    assertThat(icebergScanReport.get().getProjectedFieldNames())
+        .isEqualTo(new ArrayList<>(Arrays.asList("a", "b")));
+    assertThat(icebergScanReport.get().getSnapshotId().longValue()).isGreaterThan(0L);
+    assertThat(icebergScanReport.get().getScanMetrics().getResultDataFiles().longValue())
+        .isEqualTo(1);
+    assertThat(icebergScanReport.get().getScanMetrics().getTotalDataManifests().longValue())
+        .isEqualTo(1);
 
-    icebergScanReport
-        .extracting("snapshotId")
-        .asInstanceOf(InstanceOfAssertFactories.LONG)
-        .isGreaterThan(0);
-
-    icebergScanReport
-        .extracting("scanMetrics")
-        .asInstanceOf(InstanceOfAssertFactories.MAP)
-        .containsEntry("resultDataFiles", 1)
-        .containsEntry("totalDataManifests", 1);
-
-    icebergScanReport
-        .extracting("metadata")
-        .asInstanceOf(InstanceOfAssertFactories.MAP)
+    assertThat(icebergScanReport.get().getMetadata().getAdditionalProperties())
         .containsEntry("engine-name", "spark");
   }
 
@@ -634,16 +686,14 @@ class SparkIcebergIntegrationTest {
             .collect(Collectors.toList());
 
     // get scan report facet
-    AbstractObjectAssert<?, ?> icebergScanReport1 =
-        assertThat(inputFacets1.stream())
-            .map(l -> l.getAdditionalProperties())
-            .filteredOn(e -> e.containsKey("icebergScanReport"))
-            .map(e -> e.get("icebergScanReport"))
-            .map(e -> e.getAdditionalProperties())
-            .singleElement();
+    Optional<IcebergScanReportInputDatasetFacet> icebergScanReport1 =
+        inputFacets1.stream()
+            .map(InputDatasetInputFacets::getIcebergScanReport)
+            .filter(Objects::nonNull)
+            .findFirst();
 
-    icebergScanReport1
-        .extracting("projectedFieldNames")
+    assertThat(icebergScanReport1).isPresent();
+    assertThat(icebergScanReport1.get().getProjectedFieldNames())
         .isEqualTo(new ArrayList<>(Collections.singletonList("a")));
 
     List<InputDatasetInputFacets> inputFacets2 =
@@ -654,16 +704,14 @@ class SparkIcebergIntegrationTest {
             .collect(Collectors.toList());
 
     // get scan report facet
-    AbstractObjectAssert<?, ?> icebergScanReport2 =
-        assertThat(inputFacets2.stream())
-            .map(l -> l.getAdditionalProperties())
-            .filteredOn(e -> e.containsKey("icebergScanReport"))
-            .map(e -> e.get("icebergScanReport"))
-            .map(e -> e.getAdditionalProperties())
-            .singleElement();
+    Optional<IcebergScanReportInputDatasetFacet> icebergScanReport2 =
+        inputFacets2.stream()
+            .map(InputDatasetInputFacets::getIcebergScanReport)
+            .filter(Objects::nonNull)
+            .findFirst();
 
-    icebergScanReport2
-        .extracting("projectedFieldNames")
+    assertThat(icebergScanReport2).isPresent();
+    assertThat(icebergScanReport2.get().getProjectedFieldNames())
         .isEqualTo(new ArrayList<>(Collections.singletonList("b")));
   }
 
@@ -695,43 +743,24 @@ class SparkIcebergIntegrationTest {
             .filter(Objects::nonNull)
             .collect(Collectors.toList());
 
-    AbstractObjectAssert<?, ?> icebergCommitReport =
-        assertThat(outputFacets.stream())
-            .map(l -> l.getAdditionalProperties())
-            .filteredOn(Objects::nonNull)
-            .filteredOn(e -> e.containsKey("icebergCommitReport"))
-            .isNotEmpty()
-            .map(e -> e.get("icebergCommitReport"))
-            .map(
-                e -> {
-                  log.info(
-                      "Additional properties from {} {}",
-                      e.getClass(),
-                      OpenLineageClientUtils.toJson(e.getAdditionalProperties()));
-                  return e.getAdditionalProperties();
-                })
-            .singleElement();
+    Optional<IcebergCommitReportOutputDatasetFacet> icebergCommitReport =
+        outputFacets.stream()
+            .map(OutputDatasetOutputFacets::getIcebergCommitReport)
+            .filter(Objects::nonNull)
+            .findFirst();
 
-    icebergCommitReport
-        .extracting("operation", "sequenceNumber")
-        .doesNotContainNull()
-        .contains("append", 2);
+    assertThat(icebergCommitReport).isPresent();
+    assertThat(icebergCommitReport.get().getOperation()).isEqualTo("append");
+    assertThat(icebergCommitReport.get().getSequenceNumber().longValue()).isEqualTo(2L);
+    assertThat(icebergCommitReport.get().getSnapshotId().longValue()).isGreaterThan(0L);
 
-    icebergCommitReport
-        .extracting("snapshotId")
-        .asInstanceOf(InstanceOfAssertFactories.LONG)
-        .isGreaterThan(0);
-
-    icebergCommitReport
-        .extracting("metadata")
-        .asInstanceOf(InstanceOfAssertFactories.MAP)
+    assertThat(icebergCommitReport.get().getMetadata().getAdditionalProperties())
         .containsEntry("engine-name", "spark");
 
-    icebergCommitReport
-        .extracting("commitMetrics")
-        .asInstanceOf(InstanceOfAssertFactories.MAP)
-        .containsEntry("addedRecords", 1)
-        .containsEntry("addedDataFiles", 1);
+    assertThat(icebergCommitReport.get().getCommitMetrics().getAddedRecords().longValue())
+        .isEqualTo(1L);
+    assertThat(icebergCommitReport.get().getCommitMetrics().getAddedDataFiles().longValue())
+        .isEqualTo(1L);
   }
 
   private void clearTables(String... tables) {

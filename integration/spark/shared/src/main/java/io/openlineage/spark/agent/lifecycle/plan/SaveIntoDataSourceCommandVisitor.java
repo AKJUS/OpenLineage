@@ -16,6 +16,7 @@ import io.openlineage.client.OpenLineage.OutputDataset;
 import io.openlineage.client.utils.DatasetIdentifier;
 import io.openlineage.client.utils.jdbc.JdbcDatasetUtils;
 import io.openlineage.spark.agent.util.DatasetFacetsUtils;
+import io.openlineage.spark.agent.util.LogicalRelationFactory;
 import io.openlineage.spark.agent.util.PathUtils;
 import io.openlineage.spark.agent.util.PlanUtils;
 import io.openlineage.spark.agent.util.ScalaConversionUtils;
@@ -184,11 +185,12 @@ public class SaveIntoDataSourceCommandVisitor
       throw ex;
     }
     LogicalRelation logicalRelation =
-        new LogicalRelation(
-            relation,
-            ScalaConversionUtils.asScalaSeqEmpty(),
-            Option.empty(),
-            command.isStreaming());
+        LogicalRelationFactory.create(
+                relation,
+                ScalaConversionUtils.asScalaSeqEmpty(),
+                Option.empty(),
+                command.isStreaming())
+            .orElseThrow(() -> new RuntimeException("Failed to create LogicalRelation"));
     return delegate(
             context.getOutputDatasetQueryPlanVisitors(), context.getOutputDatasetBuilders(), event)
         .applyOrElse(
@@ -254,7 +256,7 @@ public class SaveIntoDataSourceCommandVisitor
   public Optional<String> jobNameSuffix(SaveIntoDataSourceCommand command) {
     if (command.dataSource().getClass().getName().contains("DeltaDataSource")
         && command.options().contains("path")) {
-      return Optional.of(trimPath(command.options().get("path").get()));
+      return Optional.of(trimPath(context, command.options().get("path").get()));
     } else if (KustoRelationVisitor.isKustoSource(command.dataSource())) {
       return Optional.ofNullable(command.options().get("kustotable"))
           .filter(Option::isDefined)

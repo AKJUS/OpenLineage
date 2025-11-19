@@ -5,6 +5,7 @@
 
 package io.openlineage.client;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
@@ -107,7 +108,8 @@ class OpenLineageTest {
                     "ns",
                     "ds",
                     ol.newDatasetFacetsBuilder()
-                        .documentation(ol.newDocumentationDatasetFacet("foo"))
+                        .documentation(
+                            ol.newDocumentationDatasetFacetBuilder().description("foo").build())
                         .build()))
             .build();
 
@@ -134,7 +136,9 @@ class OpenLineageTest {
                     "ns",
                     "ds",
                     ol.newDatasetFacetsBuilder()
-                        .put(documentation, ol.newDocumentationDatasetFacet("foo"))
+                        .put(
+                            documentation,
+                            ol.newDocumentationDatasetFacetBuilder().description("foo").build())
                         .build()))
             .build();
 
@@ -238,6 +242,15 @@ class OpenLineageTest {
                         .build())
                 .inputFacets(
                     ol.newInputDatasetInputFacetsBuilder()
+                        .put(
+                            "subset",
+                            ol.newInputSubsetInputDatasetFacetBuilder()
+                                .inputCondition(
+                                    ol.newLocationSubsetConditionBuilder()
+                                        .locations(
+                                            Arrays.asList("s3://bucket/key1", "s3://bucket/key2"))
+                                        .build())
+                                .build())
                         .dataQualityMetrics(
                             ol.newDataQualityMetricsInputDatasetFacetBuilder()
                                 .rowCount(10L)
@@ -456,5 +469,29 @@ class OpenLineageTest {
 
       assertEquals(json, mapper.writeValueAsString(readServer));
     }
+  }
+
+  @Test
+  void testHashCodeAndEqualsCodeGen() {
+    URI producer = URI.create("producer");
+    OpenLineage ol = new OpenLineage(producer);
+    UUID runId = UUID.randomUUID();
+    RunFacets runFacets =
+        ol.newRunFacetsBuilder()
+            .nominalTime(
+                ol.newNominalTimeRunFacetBuilder()
+                    .nominalStartTime(now)
+                    .nominalEndTime(now)
+                    .build())
+            .build();
+
+    Run run = ol.newRunBuilder().runId(runId).facets(runFacets).build();
+    Run sameRun = ol.newRunBuilder().runId(runId).facets(runFacets).build();
+    Run differentRun = ol.newRunBuilder().runId(UUID.randomUUID()).facets(runFacets).build();
+
+    assertThat(run.hashCode()).isEqualTo(sameRun.hashCode());
+    assertThat(run).isEqualTo(sameRun);
+    assertThat(run.hashCode()).isNotEqualTo(differentRun.hashCode());
+    assertThat(run).isNotEqualTo(differentRun);
   }
 }

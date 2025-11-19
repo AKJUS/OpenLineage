@@ -16,6 +16,21 @@ const getCurrentVersion = () => {
   }
 };
 
+// Get only the most recent versions to build (limit to reduce memory usage)
+const getVersionsToBuild = () => {
+  const versionsPath = path.resolve(__dirname, "versions.json");
+  if (!fs.existsSync(versionsPath)) {
+    return ["current"];
+  }
+
+  const allVersions = require(versionsPath);
+  // Build only the 10 most recent versions (plus "current")
+  const MAX_VERSIONS_TO_BUILD = 10;
+  const versionsToBuild = allVersions.slice(0, Math.min(MAX_VERSIONS_TO_BUILD, allVersions.length));
+
+  return ["current", ...versionsToBuild];
+};
+
 // Replaces every occurrence of "{{PREPROCESSOR:OPENLINEAGE_VERSION}}" with the current version of the documentation.
 const openLineageVersionProvider = ({ filePath, fileContent }) => {
   return fileContent.replace(/{{PREPROCESSOR:OPENLINEAGE_VERSION}}/g, getCurrentVersion());
@@ -34,7 +49,7 @@ const linksSocial = [
   { href: "https://fosstodon.org/@openlineage", label: "Mastodon", rel: "me" },
   { href: "https://twitter.com/OpenLineage", label: "Twitter" },
   { href: "https://www.linkedin.com/groups/13927795/", label: "LinkedIn" },
-  { href: "https://join.slack.com/t/openlineage/shared_invite/zt-2u4oiyz5h-TEmqpP4fVM5eCdOGeIbZvA", label: "Slack" },
+  { href: "https://join.slack.com/t/openlineage/shared_invite/zt-3arpql6lg-Nt~hicnDsnDY_GK_LEX06w", label: "Slack" },
   { href: "https://github.com/OpenLineage/OpenLineage", label: "GitHub" },
 ];
 
@@ -67,6 +82,8 @@ const config = {
         docs: {
           sidebarPath: require.resolve("./sidebars.js"),
           exclude: ["**/partials/**"],
+          // Only build the 10 most recent versions to reduce memory usage
+          onlyIncludeVersions: getVersionsToBuild(),
           editUrl: ({ versionDocsDirPath, docPath, version }) => {
             if (version === "current") {
               return `https://github.com/OpenLineage/OpenLineage/tree/main/website/docs/${docPath}`;
@@ -164,7 +181,7 @@ const config = {
       },
       colorMode: {
         defaultMode: "light",
-        disableSwitch: true,
+        disableSwitch: false,
         respectPrefersColorScheme: false,
       },
       image: "img/home-thumb.png",

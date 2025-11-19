@@ -8,9 +8,9 @@ It uses built-in Hive configuration mechanisms. The most important part of the c
 
 Your options are:
 
-1. [Setting the properties directly in SQL](#setting-the-properties-directly-in-SQL).
+1. [Setting the properties directly in SQL](#setting-the-properties-directly-in-sql).
 2. [Using `--hiveconf` options with the CLI](#using---hiveconf-options-with-the-cli).
-3. [Adding properties to the `hive-site.xml` file](#adding-properties-to-the-hive--site.xml-file).
+3. [Adding properties to the `hive-site.xml` file](#adding-properties-to-the-hive-site-file).
 
 #### Setting the properties directly in SQL
 You can set properties in SQL session with
@@ -26,6 +26,7 @@ SELECT ...
 
 
 #### Using `--hiveconf` options with the CLI
+
 Executing hive query from CLI you can set configuration with `--hiveconf`
 ```bash
 hive \
@@ -44,18 +45,25 @@ In case of using the Hive integration on [Google Cloud Dataproc](https://cloud.g
 ```shell
 gcloud dataproc jobs submit hive \
     --cluster <cluster_name> \
-    --region <region> \
+    --region "<region>" \
     --properties "hive.openlineage.job.name=monthly_transaction_summary_job" \
-    --execute <query_string>
+    --execute "<query_string>"
 ```
 :::
 
-#### Adding properties to the `hive-site.xml` file
+#### Adding properties to the `hive-site` file
+
+`hive-site.xml`:
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
 <configuration>
     ...
+    <property>
+        <!-- required only to capture session creation time, can be omitted -->
+        <name>hive.server2.session.hook</name>
+        <value>io.openlineage.hive.hooks.HiveOpenLineageHook</value>
+    </property>
     <property>
         <name>hive.exec.post.hooks</name>
         <value>io.openlineage.hive.hooks.HiveOpenLineageHook</value>
@@ -79,4 +87,3 @@ gcloud dataproc jobs submit hive \
     ...
 </configuration>
 ```
-

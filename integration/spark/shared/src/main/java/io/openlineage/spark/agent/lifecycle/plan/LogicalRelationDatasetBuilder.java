@@ -36,6 +36,7 @@ import org.apache.spark.sql.execution.datasources.HadoopFsRelation;
 import org.apache.spark.sql.execution.datasources.LogicalRelation;
 import org.apache.spark.sql.execution.datasources.jdbc.JDBCOptions;
 import org.apache.spark.sql.execution.datasources.jdbc.JDBCRelation;
+import org.apache.spark.sql.sources.BaseRelation;
 
 /**
  * {@link LogicalPlan} visitor that attempts to extract a {@link OpenLineage.Dataset} from a {@link
@@ -153,11 +154,21 @@ public class LogicalRelationDatasetBuilder<D extends OpenLineage.Dataset>
               }
               datasetFacetsBuilder.getInputFacets().inputStatistics(statsBuilder.build());
             });
+    if (catalogTable.stats() == null || catalogTable.stats().isEmpty()) {
+      Optional.ofNullable(logRel.relation())
+          .map(BaseRelation::sizeInBytes)
+          .ifPresent(
+              size -> {
+                statsBuilder.size(size);
+                datasetFacetsBuilder.getInputFacets().inputStatistics(statsBuilder.build());
+              });
+    }
 
     getDatasetVersion(logRel)
         .ifPresent(
             v -> DatasetVersionUtils.buildVersionOutputFacets(context, datasetFacetsBuilder, v));
 
+    addCatalogAndStorageFacets(catalogTable, datasetFacetsBuilder);
     return Collections.singletonList(datasetFactory.getDataset(di, datasetFacetsBuilder));
   }
 
@@ -209,9 +220,7 @@ public class LogicalRelationDatasetBuilder<D extends OpenLineage.Dataset>
                           relation.schema(),
                           datasetFacetsBuilder));
                 } else {
-                  return rootPaths.stream()
-                      .map(p -> PlanUtils.getDirectoryPath(p, hadoopConfig))
-                      .distinct()
+                  return PlanUtils.getDirectoryPaths(rootPaths, hadoopConfig).stream()
                       .map(
                           p -> {
                             // TODO- refactor this to return a single partitioned dataset based on
@@ -272,5 +281,10 @@ public class LogicalRelationDatasetBuilder<D extends OpenLineage.Dataset>
   protected Optional<String> getDatasetVersion(LogicalRelation x) {
     // not implemented
     return Optional.empty();
+  }
+
+  protected void addCatalogAndStorageFacets(
+      CatalogTable catalogTable, DatasetCompositeFacetsBuilder builder) {
+    // not implemented
   }
 }

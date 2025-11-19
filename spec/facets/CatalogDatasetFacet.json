@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://openlineage.io/spec/facets/1-0-0/CatalogDatasetFacet.json",
+  "$id": "https://openlineage.io/spec/facets/1-1-0/CatalogDatasetFacet.json",
   "$defs": {
     "CatalogDatasetFacet": {
       "allOf": [
@@ -39,6 +39,13 @@
               "description": "Source system where the catalog is configured.",
               "type": "string",
               "example": "spark, flink, hive"
+            },
+            "catalogProperties": {
+              "description": "Additional catalog properties",
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
             }
           },
           "required": ["framework", "type", "name"]

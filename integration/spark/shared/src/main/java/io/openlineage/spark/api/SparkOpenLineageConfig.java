@@ -17,6 +17,8 @@ import io.openlineage.client.transports.FacetsConfig;
 import io.openlineage.client.transports.TransportConfig;
 import java.util.*;
 import java.util.stream.Collectors;
+import lombok.AllArgsConstructor;
+import lombok.Data;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.NonNull;
@@ -42,9 +44,10 @@ public class SparkOpenLineageConfig extends OpenLineageConfig<SparkOpenLineageCo
   private String rootParentJobNamespace;
   private String rootParentRunId;
   private String overriddenAppName;
-  @NonNull private String debugFacet;
   private String testExtensionProvider;
   private JobNameConfig jobName;
+
+  @JsonProperty("vendors")
   private VendorsConfig vendors;
 
   @JsonProperty("columnLineage")
@@ -52,6 +55,12 @@ public class SparkOpenLineageConfig extends OpenLineageConfig<SparkOpenLineageCo
 
   @JsonProperty("filter")
   private FilterConfig filterConfig;
+
+  @JsonProperty("debug")
+  private DebugConfig debugConfig;
+
+  @JsonProperty("timeout")
+  private TimeoutConfig timeoutConfig;
 
   public SparkOpenLineageConfig(
       String namespace,
@@ -122,7 +131,8 @@ public class SparkOpenLineageConfig extends OpenLineageConfig<SparkOpenLineageCo
     if (columnLineageConfig == null) {
       columnLineageConfig = new ColumnLineageConfig();
       // TODO #3084: For the release 1.26.0 this flag should default to true
-      columnLineageConfig.setDatasetLineageEnabled(false);
+      columnLineageConfig.setSchemaSizeLimit(1_000);
+      columnLineageConfig.setDatasetLineageEnabled(true);
     }
     return columnLineageConfig;
   }
@@ -139,8 +149,14 @@ public class SparkOpenLineageConfig extends OpenLineageConfig<SparkOpenLineageCo
   @Setter
   @ToString
   public static class VendorsConfig {
-    @JsonAnySetter @NonNull
-    private final Map<String, String> additionalProperties = new HashMap<>();
+    @JsonAnySetter @NonNull private final Map<String, VendorConfig> config = new HashMap<>();
+
+    @Data
+    @AllArgsConstructor
+    @NoArgsConstructor
+    public static class VendorConfig {
+      @NonNull private Boolean metricsReporterDisabled = false;
+    }
   }
 
   @Getter

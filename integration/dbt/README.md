@@ -23,6 +23,7 @@ Right now, `openlineage-dbt` supports only these dbt adapters:
 * `athena`
 * `glue`
 * `postgres`
+* `clickhouse`
 * `trino`
 * `databricks`
 * `sqlserver`
@@ -69,6 +70,20 @@ To begin collecting dbt metadata with OpenLineage, replace `dbt run` with `dbt-o
 Additional table and column level metadata will be available if `catalog.json`, a result of running `dbt docs generate`, will be found in the target directory.
 
 If you need to send events without running the job you can use the command `dbt-ol send-events`, it will send the metadata of your last run without running the job.
+
+## Development
+
+For detailed development setup instructions, see the [Python development setup guide](https://openlineage.io/docs/development/developing/python/setup).
+
+Quick start:
+```bash
+# From the repository root
+$ make setup-dbt
+
+# Or manually
+$ cd integration/dbt
+$ uv sync --extra dev
+```
 
 ----
 SPDX-License-Identifier: Apache-2.0\

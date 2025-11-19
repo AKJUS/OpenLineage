@@ -26,6 +26,7 @@ Right now, `openlineage-dbt` supports only these dbt adapters:
 * `athena`
 * `glue`
 * `postgres`
+* `clickhouse`
 * `trino`
 * `databricks`
 * `sqlserver`
@@ -49,6 +50,12 @@ Finally, we can optionally specify a namespace where the lineage events will be 
 ```bash
 OPENLINEAGE_NAMESPACE=dev
 ```
+
+You can also override the job name sent by dbt OpenLineage events by providing env variable
+```bash
+OPENLINEAGE_DBT_JOB_NAME=<your-job-name>
+```
+or passing `--openlineage-dbt-job-name <your-job-name>` in the dbt command line.
 
 More configuration parameters can be found in [Python client documentation](../client/python.md#configuration)
 
@@ -75,4 +82,4 @@ Emitted 4 openlineage events
 
 ## Feedback
 
-What did you think of this guide? You can reach out to us on [slack](https://join.slack.com/t/openlineage/shared_invite/zt-2u4oiyz5h-TEmqpP4fVM5eCdOGeIbZvA) and leave us feedback!  
+What did you think of this guide? You can reach out to us on [slack](https://join.slack.com/t/openlineage/shared_invite/zt-3arpql6lg-Nt~hicnDsnDY_GK_LEX06w) and leave us feedback!  

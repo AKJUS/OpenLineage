@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import datetime
 import os
+import warnings
 from typing import TYPE_CHECKING
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, PropertyMock, patch
 
+import attr
 import pytest
 from openlineage.client import OpenLineageClient
 from openlineage.client.event_v2 import BaseEvent, Job, Run, RunEvent, RunState
+from openlineage.client.facet_v2 import external_query_run
 from openlineage.client.serde import Serde
 from openlineage.client.transport.transform import EventTransformer, TransformConfig, TransformTransport
 from openlineage.client.uuid import generate_new_uuid
@@ -91,7 +94,7 @@ def test_transform_config_from_dict_minimal_config() -> None:
     )
     assert config.transport == {"type": "console"}
     assert config.transformer_class == "some.class.to.be.Imported"
-    assert config.transformer_properties == {}
+    assert config.transformer_properties is None
 
 
 def test_transform_config_from_dict_missing_config() -> None:
@@ -154,7 +157,9 @@ def test_client_with_transform_transport_emits(mocker: MockerFixture) -> None:
     )
 
 
-def test_client_with_transform_transport_emits_modified_event(mocker: MockerFixture) -> None:
+@patch.object(OpenLineageClient, "_run_tags", new_callable=PropertyMock)
+def test_client_with_transform_transport_emits_modified_event(mock_run_tags, mocker: MockerFixture) -> None:
+    mock_run_tags.return_value = []
     session = mocker.patch("requests.Session")
     config = TransformConfig.from_dict(
         {
@@ -205,6 +210,93 @@ def test_client_with_transform_transport_emits_modified_event(mocker: MockerFixt
     )
 
 
+@patch.object(OpenLineageClient, "_run_tags", new_callable=PropertyMock)
+def test_client_with_transform_transport_emits_modified_event_with_older_facets(
+    mock_run_tags,
+    mocker: MockerFixture,
+) -> None:
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        from openlineage.client.facet import BaseFacet as OldBaseFacet
+
+        @attr.define
+        class SomeOldRunFacet(OldBaseFacet):
+            version: str = attr.ib()
+
+    mock_run_tags.return_value = []
+    session = mocker.patch("requests.Session")
+    config = TransformConfig.from_dict(
+        {
+            "transport": {
+                "type": "http",
+                "url": "http://backend:5000",
+                "session": session,
+            },
+            "transformer_class": "tests.transform.test_transform.SampleEventTransformer",
+        }
+    )
+    transport = TransformTransport(config)
+    client = OpenLineageClient(transport=transport)
+    now = datetime.datetime.now().isoformat()
+    run_id = str(generate_new_uuid())
+    event = RunEvent(
+        eventType=RunState.START,
+        eventTime=now,
+        run=Run(
+            runId=run_id,
+            facets={
+                "externalQuery": external_query_run.ExternalQueryRunFacet(
+                    externalQueryId="queryid", source="source"
+                ),
+                "old_facet": SomeOldRunFacet(version="2"),
+            },
+        ),
+        job=Job(namespace="http", name="test"),
+        producer="prod",
+    )
+    modified_event = RunEvent(
+        eventType=RunState.START,
+        eventTime=now,
+        run=Run(
+            runId=run_id,
+            facets={
+                "externalQuery": external_query_run.ExternalQueryRunFacet(
+                    externalQueryId="queryid", source="source"
+                ),
+                "old_facet": SomeOldRunFacet(version="2"),
+            },
+        ),
+        job=Job(namespace="new_value", name="test"),
+        producer="prod",
+    )
+
+    client.emit(event)
+    transport.transport.session.post.assert_called_once_with(
+        url="http://backend:5000/api/v1/lineage",
+        data=Serde.to_json(modified_event),
+        headers={"Content-Type": "application/json"},
+        timeout=5.0,
+        verify=True,
+    )
+
+    # Assert the original event is unchanged
+    assert event == RunEvent(
+        eventType=RunState.START,
+        eventTime=now,
+        run=Run(
+            runId=run_id,
+            facets={
+                "externalQuery": external_query_run.ExternalQueryRunFacet(
+                    externalQueryId="queryid", source="source"
+                ),
+                "old_facet": SomeOldRunFacet(version="2"),
+            },
+        ),
+        job=Job(namespace="http", name="test"),
+        producer="prod",
+    )
+
+
 def test_client_with_transform_transport_skips_emission_when_transformed_event_is_none(
     mocker: MockerFixture,
 ) -> None:
@@ -235,9 +327,13 @@ def test_client_with_transform_transport_skips_emission_when_transformed_event_i
     transport.transport.session.post.assert_not_called()
 
 
-def test_client_with_transform_transport_emits_modified_deprecated_event(mocker: MockerFixture) -> None:
+@patch.object(OpenLineageClient, "_run_tags", new_callable=PropertyMock)
+def test_client_with_transform_transport_emits_modified_deprecated_event(
+    mock_run_tags, mocker: MockerFixture
+) -> None:
     from openlineage.client.run import Job, Run, RunEvent, RunState
 
+    mock_run_tags.return_value = []
     session = mocker.patch("requests.Session")
     config = TransformConfig.from_dict(
         {
@@ -304,8 +400,9 @@ def test_transform_transport_from_env_vars_emits(mock_post):
     transport = OpenLineageClient().transport
     mock_event = MagicMock()
 
-    with patch("openlineage.client.serde.Serde.to_json", return_value='{"mock": "event"}'), patch(
-        "gzip.compress", return_value=b"compressed_data"
+    with (
+        patch("openlineage.client.serde.Serde.to_json", return_value='{"mock": "event"}'),
+        patch("gzip.compress", return_value=b"compressed_data"),
     ):
         transport.emit(mock_event)
 
@@ -382,3 +479,21 @@ def test_client_with_transform_transport_fails_when_transform_fails(mocker: Mock
         client.emit(event)
 
     transport.transport.session.post.assert_not_called()
+
+
+def test_client_with_transform_transport_close(mocker: MockerFixture) -> None:
+    session = mocker.patch("requests.Session")
+    config = TransformConfig.from_dict(
+        {
+            "transport": {
+                "type": "http",
+                "url": "http://backend:5000",
+                "session": session,
+            },
+            "transformer_class": "tests.transform.test_transform.NoopEventTransformer",
+        }
+    )
+    transport = TransformTransport(config)
+
+    transport.close()
+    session.close.assert_called_once()

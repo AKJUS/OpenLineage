@@ -9,7 +9,9 @@ import static io.openlineage.spark.agent.MockServerUtils.getEventsEmittedWithJob
 import static io.openlineage.spark.agent.SparkTestUtils.SPARK_VERSION;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import io.openlineage.client.OpenLineage;
+import io.openlineage.client.OpenLineage.CatalogDatasetFacet;
+import io.openlineage.client.OpenLineage.IcebergCommitReportOutputDatasetFacet;
+import io.openlineage.client.OpenLineage.IcebergScanReportInputDatasetFacet;
 import io.openlineage.client.OpenLineage.InputDataset;
 import io.openlineage.client.OpenLineage.InputDatasetInputFacets;
 import io.openlineage.client.OpenLineage.OutputDataset;
@@ -29,13 +31,10 @@ import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.RowFactory;
 import org.apache.spark.sql.SparkSession;
-import org.apache.spark.sql.SparkSession$;
 import org.apache.spark.sql.types.LongType$;
 import org.apache.spark.sql.types.Metadata;
 import org.apache.spark.sql.types.StructField;
 import org.apache.spark.sql.types.StructType;
-import org.assertj.core.api.AbstractObjectAssert;
-import org.assertj.core.api.InstanceOfAssertFactories;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -68,7 +67,7 @@ class SparkRestIcebergIntegrationTest {
   @BeforeAll
   @SneakyThrows
   public static void beforeAll() {
-    SparkSession$.MODULE$.cleanupAnyExistingSession();
+    Spark4CompatUtils.cleanupAnyExistingSession();
     FileUtils.deleteDirectory(new File("/tmp/iceberg/"));
     mockServer = MockServerUtils.createAndConfigureMockServer(MOCK_SERVER_PORT);
     icebergRestContainer.start();
@@ -77,7 +76,7 @@ class SparkRestIcebergIntegrationTest {
   @AfterAll
   @SneakyThrows
   public static void afterAll() {
-    SparkSession$.MODULE$.cleanupAnyExistingSession();
+    Spark4CompatUtils.cleanupAnyExistingSession();
     MockServerUtils.stopMockServer(mockServer);
     icebergRestContainer.stop();
   }
@@ -153,20 +152,14 @@ class SparkRestIcebergIntegrationTest {
             .collect(Collectors.toList());
 
     // get scan report facet
-    AbstractObjectAssert<?, ?> icebergScanReport =
-        assertThat(inputFacets.stream())
-            .map(l -> l.getAdditionalProperties())
-            .filteredOn(Objects::nonNull)
-            .filteredOn(e -> e.containsKey("icebergScanReport"))
-            .isNotEmpty()
-            .map(e -> e.get("icebergScanReport"))
-            .map(e -> e.getAdditionalProperties())
-            .singleElement();
+    Optional<IcebergScanReportInputDatasetFacet> icebergScanReport =
+        inputFacets.stream()
+            .map(InputDatasetInputFacets::getIcebergScanReport)
+            .filter(Objects::nonNull)
+            .findFirst();
 
-    icebergScanReport
-        .extracting("snapshotId")
-        .asInstanceOf(InstanceOfAssertFactories.LONG)
-        .isGreaterThan(0);
+    assertThat(icebergScanReport).isPresent();
+    assertThat(icebergScanReport.get().getSnapshotId().longValue()).isGreaterThan(0);
 
     // test commit report
     List<OutputDatasetOutputFacets> outputFacets =
@@ -178,22 +171,16 @@ class SparkRestIcebergIntegrationTest {
             .collect(Collectors.toList());
 
     // get scan report facet
-    AbstractObjectAssert<?, ?> icebergCommitReport =
-        assertThat(outputFacets.stream())
-            .map(l -> l.getAdditionalProperties())
-            .filteredOn(Objects::nonNull)
-            .filteredOn(e -> e.containsKey("icebergCommitReport"))
-            .isNotEmpty()
-            .map(e -> e.get("icebergCommitReport"))
-            .map(e -> e.getAdditionalProperties())
-            .first();
+    Optional<IcebergCommitReportOutputDatasetFacet> icebergCommitReport =
+        outputFacets.stream()
+            .map(OutputDatasetOutputFacets::getIcebergCommitReport)
+            .filter(Objects::nonNull)
+            .findFirst();
 
-    icebergCommitReport
-        .extracting("snapshotId")
-        .asInstanceOf(InstanceOfAssertFactories.LONG)
-        .isGreaterThan(0);
+    assertThat(icebergCommitReport).isPresent();
+    assertThat(icebergCommitReport.get().getSnapshotId().longValue()).isGreaterThan(0);
 
-    Optional<OpenLineage.CatalogDatasetFacet> catalogDatasetFacet =
+    Optional<CatalogDatasetFacet> catalogDatasetFacet =
         runEvents.stream()
             .flatMap(e -> e.getInputs().stream())
             .filter(e -> e.getName().endsWith("scan_source"))
@@ -202,7 +189,7 @@ class SparkRestIcebergIntegrationTest {
             .findFirst();
 
     assertThat(catalogDatasetFacet).isPresent();
-    OpenLineage.CatalogDatasetFacet catalog = catalogDatasetFacet.get();
+    CatalogDatasetFacet catalog = catalogDatasetFacet.get();
     assertThat(catalog.getType()).isEqualTo("rest");
     assertThat(catalog.getFramework()).isEqualTo("iceberg");
     assertThat(catalog.getName()).isEqualTo("rest");

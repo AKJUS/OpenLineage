@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://openlineage.io/spec/facets/1-0-1/SQLJobFacet.json",
+  "$id": "https://openlineage.io/spec/facets/1-1-0/SQLJobFacet.json",
   "$defs": {
     "SQLJobFacet": {
       "allOf": [
@@ -13,6 +13,10 @@
             "query": {
               "type": "string",
               "example": "SELECT * FROM foo"
+            },
+            "dialect": {
+              "type": "string",
+              "example": "snowflake"
             }
           },
           "required": ["query"]

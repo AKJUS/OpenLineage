@@ -39,9 +39,7 @@ public class SqlDWDatabricksVisitor<D extends OpenLineage.Dataset>
     extends QueryPlanVisitor<LogicalPlan, D> {
   private final DatasetFactory<D> factory;
   private static final String DATABRICKS_CLASS_NAME = "com.databricks.spark.sqldw.SqlDWRelation";
-  private static final String SPARK3_TABLE_FIELD_NAME = "tableNameOrSubquery";
-  private static final String SPARK2_TABLE_FIELD_NAME =
-      "com$databricks$spark$sqldw$SqlDWRelation$$tableNameOrSubquery";
+  private static final String TABLE_FIELD_NAME = "tableNameOrSubquery";
 
   public SqlDWDatabricksVisitor(OpenLineageContext context, DatasetFactory<D> factory) {
     super(context);
@@ -52,8 +50,9 @@ public class SqlDWDatabricksVisitor<D extends OpenLineage.Dataset>
     try {
       SqlDWDatabricksVisitor.class.getClassLoader().loadClass(DATABRICKS_CLASS_NAME);
       return true;
-    } catch (Exception e) {
-      // swallow- we don't care
+    } catch (NoClassDefFoundError | Exception e) {
+      // If class does not exist or it's loading fails for some reason, we handle that failure by
+      // returning false
     }
     return false;
   }
@@ -77,10 +76,8 @@ public class SqlDWDatabricksVisitor<D extends OpenLineage.Dataset>
     try {
       List<Field> relationFields = FieldUtils.getAllFieldsList(relation.getClass());
       for (Field f : relationFields) {
-        if (SPARK3_TABLE_FIELD_NAME.equals(f.getName())) {
-          tableName = (String) FieldUtils.readField(relation, SPARK3_TABLE_FIELD_NAME, true);
-        } else if (SPARK2_TABLE_FIELD_NAME.equals(f.getName())) {
-          tableName = (String) FieldUtils.readField(relation, SPARK2_TABLE_FIELD_NAME, true);
+        if (TABLE_FIELD_NAME.equals(f.getName())) {
+          tableName = (String) FieldUtils.readField(relation, TABLE_FIELD_NAME, true);
         }
       }
     } catch (IllegalAccessException | IllegalArgumentException e) {

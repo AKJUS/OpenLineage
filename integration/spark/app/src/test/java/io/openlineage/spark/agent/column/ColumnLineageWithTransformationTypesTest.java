@@ -5,21 +5,22 @@
 
 package io.openlineage.spark.agent.column;
 
+import static io.openlineage.client.utils.TransformationInfo.Subtypes.CONDITIONAL;
+import static io.openlineage.client.utils.TransformationInfo.Subtypes.FILTER;
+import static io.openlineage.client.utils.TransformationInfo.Subtypes.GROUP_BY;
+import static io.openlineage.client.utils.TransformationInfo.Subtypes.JOIN;
+import static io.openlineage.client.utils.TransformationInfo.Subtypes.SORT;
+import static io.openlineage.client.utils.TransformationInfo.Subtypes.WINDOW;
 import static io.openlineage.spark.agent.column.ColumnLevelLineageTestUtils.*;
-import static io.openlineage.spark.agent.lifecycle.plan.column.TransformationInfo.Subtypes.CONDITIONAL;
-import static io.openlineage.spark.agent.lifecycle.plan.column.TransformationInfo.Subtypes.FILTER;
-import static io.openlineage.spark.agent.lifecycle.plan.column.TransformationInfo.Subtypes.GROUP_BY;
-import static io.openlineage.spark.agent.lifecycle.plan.column.TransformationInfo.Subtypes.JOIN;
-import static io.openlineage.spark.agent.lifecycle.plan.column.TransformationInfo.Subtypes.SORT;
-import static io.openlineage.spark.agent.lifecycle.plan.column.TransformationInfo.Subtypes.WINDOW;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.openlineage.client.OpenLineage;
+import io.openlineage.client.utils.TransformationInfo;
+import io.openlineage.spark.agent.Spark4CompatUtils;
 import io.openlineage.spark.agent.Versions;
 import io.openlineage.spark.agent.lifecycle.SparkOpenLineageExtensionVisitorWrapper;
-import io.openlineage.spark.agent.lifecycle.plan.column.TransformationInfo;
 import io.openlineage.spark.agent.util.DerbyUtils;
 import io.openlineage.spark.agent.util.LastQueryExecutionSparkEventListener;
 import io.openlineage.spark.api.OpenLineageContext;
@@ -35,7 +36,6 @@ import org.apache.spark.scheduler.SparkListenerEvent;
 import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SparkSession;
-import org.apache.spark.sql.SparkSession$;
 import org.apache.spark.sql.catalyst.plans.logical.LogicalPlan;
 import org.apache.spark.sql.execution.QueryExecution;
 import org.apache.spark.sql.execution.ui.SparkListenerSQLExecutionEnd;
@@ -71,27 +71,26 @@ class ColumnLineageWithTransformationTypesTest {
   @SneakyThrows
   public static void beforeAll() {
     DerbyUtils.loadSystemProperty(ColumnLineageWithTransformationTypesTest.class.getName());
-    SparkSession$.MODULE$.cleanupAnyExistingSession();
+    Spark4CompatUtils.cleanupAnyExistingSession();
   }
 
   @AfterAll
   @SneakyThrows
   public static void afterAll() {
     DerbyUtils.clearDerbyProperty();
-    SparkSession$.MODULE$.cleanupAnyExistingSession();
+    Spark4CompatUtils.cleanupAnyExistingSession();
   }
 
   @BeforeEach
   @SneakyThrows
   public void beforeEach() {
     spark =
-        SparkSession.builder()
+        Spark4CompatUtils.builderWithHiveSupport()
             .master("local[*]")
             .appName("ColumnLevelLineage")
             .config("spark.extraListeners", LastQueryExecutionSparkEventListener.class.getName())
             .config("spark.driver.host", LOCAL_IP)
             .config("spark.driver.bindAddress", LOCAL_IP)
-            .enableHiveSupport()
             .getOrCreate();
 
     SparkOpenLineageConfig config = new SparkOpenLineageConfig();
@@ -104,7 +103,7 @@ class ColumnLineageWithTransformationTypesTest {
             .queryExecution(queryExecution)
             .meterRegistry(new SimpleMeterRegistry())
             .openLineageConfig(config)
-            .sparkExtensionVisitorWrapper(new SparkOpenLineageExtensionVisitorWrapper(config))
+            .sparkExtensionVisitorWrapper(mock(SparkOpenLineageExtensionVisitorWrapper.class))
             .build();
 
     FileSystem.get(spark.sparkContext().hadoopConfiguration()).delete(new Path(DATA_PATH), true);
@@ -278,6 +277,70 @@ class ColumnLineageWithTransformationTypesTest {
   }
 
   @Test
+  void simpleQueryWithNullIfConditional() {
+    createTable("t1", "a;int", "b;int");
+    OpenLineage.ColumnLineageDatasetFacet facet =
+        getFacetForQuery(getSchemaFacet("cond;int"), "SELECT NULLIF(a, b) AS cond FROM t1");
+    assertCountColumnDependencies(facet, 3);
+    assertColumnDependsOnType(
+        facet, "cond", FILE, T1_EXPECTED_NAME, "a", TransformationInfo.identity());
+    assertColumnDependsOnType(
+        facet, "cond", FILE, T1_EXPECTED_NAME, "a", TransformationInfo.indirect(CONDITIONAL));
+    assertColumnDependsOnType(
+        facet, "cond", FILE, T1_EXPECTED_NAME, "b", TransformationInfo.indirect(CONDITIONAL));
+    assertCountDatasetDependencies(facet, 0);
+  }
+
+  @Test
+  void simpleQueryWithNvlConditional() {
+    createTable("t1", "a;int", "b;int");
+    OpenLineage.ColumnLineageDatasetFacet facet =
+        getFacetForQuery(getSchemaFacet("cond;int"), "SELECT NVL(a, b) AS cond FROM t1");
+    assertCountColumnDependencies(facet, 4);
+    assertColumnDependsOnType(
+        facet, "cond", FILE, T1_EXPECTED_NAME, "a", TransformationInfo.identity());
+    assertColumnDependsOnType(
+        facet, "cond", FILE, T1_EXPECTED_NAME, "a", TransformationInfo.indirect(CONDITIONAL));
+    assertColumnDependsOnType(
+        facet, "cond", FILE, T1_EXPECTED_NAME, "b", TransformationInfo.identity());
+    assertColumnDependsOnType(
+        facet, "cond", FILE, T1_EXPECTED_NAME, "b", TransformationInfo.indirect(CONDITIONAL));
+    assertCountDatasetDependencies(facet, 0);
+  }
+
+  @Test
+  void simpleQueryWithNvl2Conditional() {
+    createTable("t1", "a;int", "b;int", "c;int");
+    OpenLineage.ColumnLineageDatasetFacet facet =
+        getFacetForQuery(getSchemaFacet("cond;int"), "SELECT NVL2(a, b, c) AS cond FROM t1");
+    assertCountColumnDependencies(facet, 3);
+    assertColumnDependsOnType(
+        facet, "cond", FILE, T1_EXPECTED_NAME, "a", TransformationInfo.indirect(CONDITIONAL));
+    assertColumnDependsOnType(
+        facet, "cond", FILE, T1_EXPECTED_NAME, "b", TransformationInfo.identity());
+    assertColumnDependsOnType(
+        facet, "cond", FILE, T1_EXPECTED_NAME, "c", TransformationInfo.identity());
+    assertCountDatasetDependencies(facet, 0);
+  }
+
+  @Test
+  void simpleQueryWithCoalesceConditional() {
+    createTable("t1", "a;int", "b;int");
+    OpenLineage.ColumnLineageDatasetFacet facet =
+        getFacetForQuery(getSchemaFacet("cond;int"), "SELECT coalesce(a, b, 0) AS cond FROM t1");
+    assertCountColumnDependencies(facet, 4);
+    assertColumnDependsOnType(
+        facet, "cond", FILE, T1_EXPECTED_NAME, "a", TransformationInfo.identity());
+    assertColumnDependsOnType(
+        facet, "cond", FILE, T1_EXPECTED_NAME, "a", TransformationInfo.indirect(CONDITIONAL));
+    assertColumnDependsOnType(
+        facet, "cond", FILE, T1_EXPECTED_NAME, "b", TransformationInfo.identity());
+    assertColumnDependsOnType(
+        facet, "cond", FILE, T1_EXPECTED_NAME, "b", TransformationInfo.indirect(CONDITIONAL));
+    assertCountDatasetDependencies(facet, 0);
+  }
+
+  @Test
   void simpleQueryExplode() {
     createTable("t1", "a;string");
     OpenLineage.ColumnLineageDatasetFacet facet =
@@ -421,6 +484,19 @@ class ColumnLineageWithTransformationTypesTest {
                 + "AND t1.shipped_date IS NOT NULL");
     assertCountColumnDependencies(facet, 3);
     assertCountDatasetDependencies(facet, 6);
+  }
+
+  @Test
+  void simpleDistinctQuery() {
+    createTable("t1", "a;int");
+    OpenLineage.ColumnLineageDatasetFacet facet =
+        getFacetForQuery(getSchemaFacet("a;int"), "SELECT distinct a as a FROM t1");
+    assertCountColumnDependencies(facet, 1);
+    assertColumnDependsOnType(
+        facet, "a", FILE, T1_EXPECTED_NAME, "a", TransformationInfo.identity());
+    assertCountDatasetDependencies(facet, 1);
+    assertDatasetDependsOnType(
+        facet, FILE, T1_EXPECTED_NAME, "a", TransformationInfo.indirect(GROUP_BY));
   }
 
   @NotNull
